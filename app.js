@@ -218,7 +218,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
         <span><strong>批次 ${escapeHtml(batch.number)}</strong><small>${escapeHtml(formatBatchTime(batch.createdAt))} · ${batch.entries.length} 条结果</small></span>
         <span class="generation-batch-count">${batch.entries.length}</span>
       </summary>
-      <div class="generation-batch-grid">
+      <div class="generation-batch-grid${batch.entries.length === 1 ? " is-single" : ""}">
         ${batch.entries.map((entry) => `
     <article class="generation-card" data-generation-id="${escapeHtml(entry.id)}">
       <div class="generation-card-head">

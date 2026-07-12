@@ -151,6 +151,7 @@ select { min-height: 40px; padding: 0 34px 0 11px; }
 .generation-batch-summary small { margin-top: 4px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 9px; }
 .generation-batch-count { display: grid; place-items: center; min-width: 26px; height: 26px; border: 1px solid var(--line-strong); color: var(--muted); background: var(--paper); font-size: 10px; }
 .generation-batch-grid { display: grid; gap: 14px; padding: 0 12px 12px; }
+.generation-batch-grid.is-single { grid-template-columns: minmax(0, 560px); }
 .generation-card { display: block; width: 100%; margin: 0; border: 1px solid var(--line-strong); background: var(--paper); }
 .generation-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 12px; border-bottom: 1px solid var(--line); }
 .generation-card-head strong, .generation-card-head small { display: block; }
