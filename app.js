@@ -389,7 +389,7 @@ async function restoreGenerationHistory() {
     if (saved && (saved.migrated || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
     if (state.generationEntries.length) {
       $("feedHint").textContent = `已恢复 ${state.generationEntries.length} 条历史记录`;
-      if (window.matchMedia("(min-width: 901px)").matches) setActiveStage("resultStage");
+      if (window.matchMedia("(min-width: 901px)").matches) goToStage("resultStage");
       showToast(`已恢复 ${state.generationEntries.length} 条生成记录`);
     }
     resumePendingImageCleanup();
