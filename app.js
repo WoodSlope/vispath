@@ -16,7 +16,7 @@ const taskTypeSelect = $("taskType");
 const dimensionList = $("dimensionList");
 const promptList = $("variantGrid");
 const generationFeed = $("generationFeed");
-const stageButtons = [...document.querySelectorAll(".mobile-stage-nav [data-stage-target]")];
+const stageButtons = [...document.querySelectorAll(".stage-nav [data-stage-target]")];
 const blueprintSection = document.querySelector(".inline-blueprint");
 const blueprintToggle = $("toggleBlueprintBtn");
 const apiSettingsDialog = $("apiSettingsDialog");
@@ -137,10 +137,10 @@ function renderPromptCards() {
     `;
   }).join("");
   syncSubmissionBar();
-  syncMobileStageNav();
+  syncStageNav();
 }
 
-function syncMobileStageNav() {
+function syncStageNav() {
   const hasPrompts = (state.blueprint?.variants.length || 0) > 0;
   const hasResults = state.generationEntries.length > 0;
   const promptButton = document.querySelector('[data-stage-target="promptStage"]');
@@ -157,6 +157,18 @@ function setActiveStage(stageId) {
     if (active) button.setAttribute("aria-current", "step");
     else button.removeAttribute("aria-current");
   });
+  ["setupStage", "promptStage", "resultStage"].forEach((id) => {
+    document.getElementById(id)?.classList.toggle("is-stage-active", id === stageId);
+  });
+}
+
+function goToStage(stageId) {
+  setActiveStage(stageId);
+  if (window.matchMedia("(min-width: 901px)").matches) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  document.getElementById(stageId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function updateActiveStageFromScroll() {
@@ -208,7 +220,7 @@ function renderGenerationFeed() {
       </div>
     </article>
   `).join("");
-  syncMobileStageNav();
+  syncStageNav();
 }
 
 function shouldSimulateFailure(prompt) {
@@ -445,6 +457,7 @@ async function generateDirections() {
     renderPromptCards();
     $("generateBtnLabel").textContent = "重新生成方向";
     $("generateHint").textContent = "已生成方案。请在中间选择一套或多套，再统一提交到右侧。";
+    goToStage("promptStage");
     showToast("已生成 AI 提示词方案");
   } catch (error) {
     $("generateBtnLabel").textContent = state.blueprint ? "重新生成方向" : "重试生成方向";
@@ -494,6 +507,7 @@ function submitSelected() {
   renderPromptCards();
   renderGenerationFeed();
   persistGenerationHistory();
+  goToStage("resultStage");
   showToast(`已提交 ${entries.length} 套提示词到生成画板`);
   entries.forEach((entry) => runGeneration(entry));
 }
@@ -538,7 +552,7 @@ function handleGenerationAction(event) {
     state.selectedVariantIds.clear();
     renderBlueprintEmpty();
     renderPromptCards();
-    document.querySelector(".control-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+    goToStage("setupStage");
     showToast(`已继承“${entry.variantTitle}”，请设置下一轮探索`);
     return;
   }
@@ -655,6 +669,7 @@ async function reset() {
   }
   $("generateBtnLabel").textContent = "生成视觉方向";
   $("generateHint").textContent = "输入提示词或上传参考图后，生成可比较的方向方案。";
+  goToStage("setupStage");
   closeResetDialog();
   showToast("已重置工作台");
 }
@@ -681,11 +696,10 @@ $("dropzone").addEventListener("drop", (event) => { event.preventDefault(); $("d
 promptList.addEventListener("change", handlePromptAction);
 promptList.addEventListener("click", handlePromptAction);
 generationFeed.addEventListener("click", handleGenerationAction);
-document.querySelector(".mobile-stage-nav").addEventListener("click", (event) => {
+document.querySelector(".stage-nav").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-stage-target]");
   if (!button || button.disabled) return;
-  setActiveStage(button.dataset.stageTarget);
-  document.getElementById(button.dataset.stageTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  goToStage(button.dataset.stageTarget);
 });
 window.addEventListener("scroll", () => window.requestAnimationFrame(updateActiveStageFromScroll), { passive: true });
 window.matchMedia("(max-width: 600px)").addEventListener("change", () => {
@@ -695,6 +709,7 @@ window.matchMedia("(max-width: 600px)").addEventListener("change", () => {
 
 renderTaskTypes();
 renderDimensions();
+setActiveStage("setupStage");
 renderPromptCards();
 renderGenerationFeed();
 loadSavedApiSettings().then(checkImageService);
