@@ -243,7 +243,7 @@ async function requestDirectBlueprint(input) {
   const schema = {
     type: "object", required: ["locked", "variants"], additionalProperties: false,
     properties: {
-      locked: { type: "object", additionalProperties: true },
+      locked: { type: "object", required: ["intent", "subject"], additionalProperties: false, properties: { intent: { type: "string" }, subject: { type: "string" } } },
       variants: { type: "array", minItems: input.optionCount, maxItems: input.optionCount, items: { type: "object", required: ["title", "changeSummary", "prompt"], additionalProperties: false, properties: { title: { type: "string" }, changeSummary: { type: "string" }, prompt: { type: "string" } } } }
     }
   };
