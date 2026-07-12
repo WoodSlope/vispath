@@ -165,7 +165,7 @@ function setActiveStage(stageId) {
 function goToStage(stageId) {
   setActiveStage(stageId);
   if (window.matchMedia("(min-width: 901px)").matches) {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    document.getElementById(stageId)?.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
   document.getElementById(stageId)?.scrollIntoView({ behavior: "smooth", block: "start" });

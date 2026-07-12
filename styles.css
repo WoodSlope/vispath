@@ -210,15 +210,23 @@ select { min-height: 40px; padding: 0 34px 0 11px; }
 .api-settings-grid input { width: 100%; min-height: 38px; margin-top: 7px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 0; background: var(--paper); }
 
 @media (min-width: 901px) {
-  .workspace-grid { display: block; max-width: 1480px; margin: 0 auto; }
+  body { height: 100dvh; overflow: hidden; }
+  .app-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); height: calc(100dvh - 52px); overflow: hidden; }
+  .stage-nav { position: relative; top: auto; width: 100%; max-width: 1480px; margin: -12px auto 12px; }
+  .workspace-grid { display: block; width: 100%; max-width: 1480px; min-height: 0; margin: 0 auto; overflow: hidden; }
   .workspace-grid > [id] { display: none; }
-  .workspace-grid > .is-stage-active { display: block; }
+  .workspace-grid > .is-stage-active { display: block; height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
   .workspace-grid > .control-panel.is-stage-active { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); gap: 0 24px; max-width: 1200px; margin: 0 auto; }
   .control-panel .panel-heading { grid-column: 1 / -1; }
   .control-panel .form-stack { grid-column: 1; }
+  .control-panel .setup-action { position: static; margin: 0; padding: 14px 0 0; background: transparent; backdrop-filter: none; }
   .control-panel .inline-blueprint { position: sticky; top: 122px; grid-column: 2; align-self: start; margin: 28px 0 0; border: 1px solid var(--line-strong); }
   .prompt-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .prompt-column, .results-column { width: 100%; }
+  .generation-feed { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; columns: auto; }
+  .generation-card { display: block; margin: 0; }
+  .generation-art { aspect-ratio: 4 / 3; min-height: 0; background: var(--surface); }
+  .generation-art img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
   .empty-board { max-width: 960px; margin-inline: auto; }
 }
 @media (max-width: 900px) {
@@ -236,6 +244,7 @@ select { min-height: 40px; padding: 0 34px 0 11px; }
   .setup-action { margin-inline: -14px; padding: 12px 14px 14px; }
   .submission-bar { bottom: -14px; margin: 0 -14px -14px; padding: 10px 14px; }
   .panel-heading h2, .results-heading h2 { font-size: 18px; }
+  .generation-feed { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
   .topbar { min-height: 50px; padding-inline: 12px; }
