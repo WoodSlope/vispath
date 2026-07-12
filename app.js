@@ -7,6 +7,7 @@ const state = {
   referenceImageData: "",
   selectedVariantIds: new Set(),
   generationEntries: [],
+  resultFilters: { query: "", status: "all", batchId: "all" },
   batchNumber: 0,
   apiSettings: null
 };
@@ -190,14 +191,33 @@ function syncSubmissionBar() {
   $("selectAllBtn").textContent = allSelected ? "取消全选" : "全选";
 }
 
-function groupGenerationEntries() {
+function groupGenerationEntries(entries = state.generationEntries) {
   const groups = new Map();
-  state.generationEntries.forEach((entry) => {
+  entries.forEach((entry) => {
     const batchId = entry.batchId || `legacy_batch_${entry.batchNumber || "00"}`;
     if (!groups.has(batchId)) groups.set(batchId, { id: batchId, number: entry.batchNumber || "00", createdAt: entry.batchCreatedAt || entry.createdAt || "", entries: [] });
     groups.get(batchId).entries.push(entry);
   });
   return [...groups.values()];
+}
+
+function filterGenerationEntries() {
+  const query = state.resultFilters.query.trim().toLocaleLowerCase("zh-CN");
+  return state.generationEntries.filter((entry) => {
+    const batchId = entry.batchId || `legacy_batch_${entry.batchNumber || "00"}`;
+    const matchesBatch = state.resultFilters.batchId === "all" || batchId === state.resultFilters.batchId;
+    const matchesStatus = state.resultFilters.status === "all" || entry.status === state.resultFilters.status;
+    const searchable = `${entry.variantTitle || ""} ${entry.changeSummary || ""} ${entry.promptSnapshot || ""}`.toLocaleLowerCase("zh-CN");
+    return matchesBatch && matchesStatus && (!query || searchable.includes(query));
+  });
+}
+
+function syncBatchFilterOptions(batches) {
+  const select = $("resultBatchFilter");
+  const availableIds = new Set(batches.map((batch) => batch.id));
+  if (state.resultFilters.batchId !== "all" && !availableIds.has(state.resultFilters.batchId)) state.resultFilters.batchId = "all";
+  select.innerHTML = `<option value="all">全部批次</option>${batches.map((batch) => `<option value="${escapeHtml(batch.id)}">批次 ${escapeHtml(batch.number)} · ${escapeHtml(formatBatchTime(batch.createdAt))}</option>`).join("")}`;
+  select.value = state.resultFilters.batchId;
 }
 
 function formatBatchTime(value) {
@@ -208,12 +228,21 @@ function formatBatchTime(value) {
 
 function renderGenerationFeed({ openBatchId = "" } = {}) {
   const openBatchIds = new Set([...generationFeed.querySelectorAll(".generation-batch[open]")].map((item) => item.dataset.batchId));
-  const batches = groupGenerationEntries();
-  $("emptyGenerationBoard").classList.toggle("hidden", state.generationEntries.length > 0);
+  const allBatches = groupGenerationEntries();
+  syncBatchFilterOptions(allBatches);
+  const filteredEntries = filterGenerationEntries();
+  const batches = groupGenerationEntries(filteredEntries);
+  const hasVisibleOpenBatch = batches.some((batch) => openBatchIds.has(batch.id));
+  const hasEntries = state.generationEntries.length > 0;
+  $("emptyGenerationBoard").classList.toggle("hidden", hasEntries);
+  $("filteredGenerationEmpty").classList.toggle("hidden", !hasEntries || filteredEntries.length > 0);
+  $("resultFilters").classList.toggle("hidden", !hasEntries);
+  $("clearResultFiltersBtn").disabled = !state.resultFilters.query && state.resultFilters.status === "all" && state.resultFilters.batchId === "all";
+  generationFeed.classList.toggle("hidden", filteredEntries.length === 0);
   $("generationCount").textContent = state.generationEntries.length;
-  if (batches.length) $("feedHint").textContent = `${batches.length} 个批次 · 仅保存在当前浏览器`;
+  if (hasEntries) $("feedHint").textContent = `${filteredEntries.length === state.generationEntries.length ? "" : `显示 ${filteredEntries.length} / ${state.generationEntries.length} · `}${allBatches.length} 个批次 · 当前浏览器`;
   generationFeed.innerHTML = batches.map((batch, batchIndex) => `
-    <details class="generation-batch" data-batch-id="${escapeHtml(batch.id)}" ${openBatchId ? batch.id === openBatchId ? "open" : "" : openBatchIds.size ? openBatchIds.has(batch.id) ? "open" : "" : batchIndex === 0 ? "open" : ""}>
+    <details class="generation-batch" data-batch-id="${escapeHtml(batch.id)}" ${openBatchId ? batch.id === openBatchId ? "open" : "" : hasVisibleOpenBatch ? openBatchIds.has(batch.id) ? "open" : "" : batchIndex === 0 ? "open" : ""}>
       <summary class="generation-batch-summary">
         <span><strong>批次 ${escapeHtml(batch.number)}</strong><small>${escapeHtml(formatBatchTime(batch.createdAt))} · ${batch.entries.length} 条结果</small></span>
         <span class="generation-batch-count">${batch.entries.length}</span>
@@ -537,6 +566,7 @@ function submitSelected() {
     status: "loading"
   }));
   state.generationEntries = [...entries, ...state.generationEntries];
+  resetResultFilters();
   state.selectedVariantIds.clear();
   renderPromptCards();
   renderGenerationFeed({ openBatchId: batchId });
@@ -551,6 +581,17 @@ function selectAllPrompts() {
   const allSelected = variants.length > 0 && state.selectedVariantIds.size === variants.length;
   state.selectedVariantIds = new Set(allSelected ? [] : variants.map((item) => item.id));
   renderPromptCards();
+}
+
+function clearResultFilters() {
+  resetResultFilters();
+  renderGenerationFeed();
+}
+
+function resetResultFilters() {
+  state.resultFilters = { query: "", status: "all", batchId: "all" };
+  $("resultSearchInput").value = "";
+  $("resultStatusFilter").value = "all";
 }
 
 function handleGenerationAction(event) {
@@ -686,6 +727,7 @@ async function reset() {
   state.blueprint = null;
   state.selectedVariantIds.clear();
   state.generationEntries = [];
+  resetResultFilters();
   state.batchNumber = 0;
   $("filePreview").classList.add("hidden");
   $("dropzone").classList.remove("hidden");
@@ -730,6 +772,10 @@ $("dropzone").addEventListener("drop", (event) => { event.preventDefault(); $("d
 promptList.addEventListener("change", handlePromptAction);
 promptList.addEventListener("click", handlePromptAction);
 generationFeed.addEventListener("click", handleGenerationAction);
+$("resultSearchInput").addEventListener("input", (event) => { state.resultFilters.query = event.target.value; renderGenerationFeed(); });
+$("resultStatusFilter").addEventListener("change", (event) => { state.resultFilters.status = event.target.value; renderGenerationFeed(); });
+$("resultBatchFilter").addEventListener("change", (event) => { state.resultFilters.batchId = event.target.value; renderGenerationFeed(); });
+$("clearResultFiltersBtn").addEventListener("click", clearResultFilters);
 document.querySelector(".stage-nav").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-stage-target]");
   if (!button || button.disabled) return;

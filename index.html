@@ -62,15 +62,17 @@
           <div class="field-group split-fields">
             <div>
               <label for="taskType">创作类型</label>
-              <select id="taskType"></select>
+              <div class="select-control"><select id="taskType"></select></div>
             </div>
             <div>
               <label for="optionCount">生成数量</label>
-              <select id="optionCount">
+              <div class="select-control"><select id="optionCount">
                 <option value="2">2 套</option>
                 <option value="3" selected>3 套</option>
                 <option value="4">4 套</option>
-              </select>
+                <option value="5">5 套</option>
+                <option value="6">6 套</option>
+              </select></div>
             </div>
           </div>
 
@@ -135,10 +137,22 @@
           <span class="board-hint" id="feedHint">提交记录会持续保留</span>
         </div>
 
+        <div class="result-filters hidden" id="resultFilters" aria-label="筛选生成结果">
+          <label class="result-search"><span>搜索结果</span><input id="resultSearchInput" type="search" placeholder="搜索方案、变量或提示词"></label>
+          <label><span class="filter-label">生成状态</span><span class="select-control"><select id="resultStatusFilter"><option value="all">全部状态</option><option value="loading">生成中</option><option value="ready">已完成</option><option value="error">失败</option></select></span></label>
+          <label><span class="filter-label">生成批次</span><span class="select-control"><select id="resultBatchFilter"><option value="all">全部批次</option></select></span></label>
+          <button class="icon-button result-filter-clear" id="clearResultFiltersBtn" type="button" aria-label="清除结果筛选" title="清除筛选">×</button>
+        </div>
+
         <div class="empty-board" id="emptyGenerationBoard">
           <div class="empty-cross" aria-hidden="true">+</div>
           <h3>还没有生成记录</h3>
           <p>在中间选择提示词方案并提交，任务和结果会按时间进入这里。</p>
+        </div>
+        <div class="empty-board compact-empty hidden" id="filteredGenerationEmpty">
+          <div class="empty-cross" aria-hidden="true">+</div>
+          <h3>没有匹配的生成结果</h3>
+          <p>调整搜索词或筛选条件，或者清除筛选查看全部历史。</p>
         </div>
         <div class="generation-feed" id="generationFeed"></div>
       </section>
