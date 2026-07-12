@@ -152,12 +152,18 @@
       <h2 id="apiSettingsTitle">API 配置</h2>
       <p>配置保存在当前浏览器的 IndexedDB 中，不会写入 GitHub Pages 文件。浏览器直连还需要中转站允许 CORS。</p>
       <div class="api-settings-grid">
-        <label>文本 API 地址<input id="textBaseUrlInput" type="url" placeholder="https://example.com/v1"></label>
-        <label>文本 Key<input id="textApiKeyInput" type="password" autocomplete="off"></label>
-        <label>文本模型<input id="textModelInput" type="text" value="gpt-5.4-mini"></label>
-        <label>生图 API 地址<input id="imageBaseUrlInput" type="url" placeholder="https://example.com/v1"></label>
-        <label>生图 Key<input id="imageApiKeyInput" type="password" autocomplete="off"></label>
-        <label>生图模型<input id="imageModelInput" type="text" value="gpt-image-2"></label>
+        <section class="api-provider-group" aria-labelledby="textApiGroupTitle">
+          <h3 id="textApiGroupTitle">文本 API</h3>
+          <label>接口地址<input id="textBaseUrlInput" type="url" placeholder="https://example.com/v1"></label>
+          <label>API Key<input id="textApiKeyInput" type="password" autocomplete="off"></label>
+          <label>模型<input id="textModelInput" type="text" value="gpt-5.4-mini"></label>
+        </section>
+        <section class="api-provider-group" aria-labelledby="imageApiGroupTitle">
+          <h3 id="imageApiGroupTitle">生图 API</h3>
+          <label>接口地址<input id="imageBaseUrlInput" type="url" placeholder="https://example.com/v1"></label>
+          <label>API Key<input id="imageApiKeyInput" type="password" autocomplete="off"></label>
+          <label>模型<input id="imageModelInput" type="text" value="gpt-image-2"></label>
+        </section>
       </div>
       <div class="confirm-dialog-actions">
         <button class="button" id="clearApiSettingsBtn" type="button">清除配置</button>

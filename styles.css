@@ -206,6 +206,8 @@ select { min-height: 40px; padding: 0 34px 0 11px; }
 .confirm-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 22px; }
 .api-dialog { width: min(560px, calc(100vw - 32px)); }
 .api-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+.api-provider-group { display: grid; align-content: start; gap: 12px; padding: 14px; border: 1px solid var(--line); background: var(--surface); }
+.api-provider-group h3 { margin: 0 0 2px; padding-bottom: 10px; border-bottom: 1px solid var(--line-strong); font-size: 14px; }
 .api-settings-grid label { margin: 0; }
 .api-settings-grid input { width: 100%; min-height: 38px; margin-top: 7px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 0; background: var(--paper); }
 
@@ -216,11 +218,11 @@ select { min-height: 40px; padding: 0 34px 0 11px; }
   .workspace-grid { display: block; width: 100%; max-width: 1480px; min-height: 0; margin: 0 auto; overflow: hidden; }
   .workspace-grid > [id] { display: none; }
   .workspace-grid > .is-stage-active { display: block; height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
-  .workspace-grid > .control-panel.is-stage-active { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); gap: 0 24px; max-width: 1200px; margin: 0 auto; }
+  .workspace-grid > .control-panel.is-stage-active { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr); grid-template-rows: auto minmax(0, 1fr); gap: 0 24px; max-width: 1480px; margin: 0 auto; overflow: hidden; }
   .control-panel .panel-heading { grid-column: 1 / -1; }
-  .control-panel .form-stack { grid-column: 1; }
+  .control-panel .form-stack { min-height: 0; grid-column: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 10px; padding-bottom: 18px; }
   .control-panel .setup-action { position: static; margin: 0; padding: 14px 0 0; background: transparent; backdrop-filter: none; }
-  .control-panel .inline-blueprint { position: sticky; top: 122px; grid-column: 2; align-self: start; margin: 28px 0 0; border: 1px solid var(--line-strong); }
+  .control-panel .inline-blueprint { position: static; min-height: 0; grid-column: 2; align-self: stretch; margin: 28px 0 0; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line-strong); }
   .prompt-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .prompt-column, .results-column { width: 100%; }
   .generation-feed { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; columns: auto; }
@@ -274,6 +276,7 @@ select { min-height: 40px; padding: 0 34px 0 11px; }
   .variant-grid { gap: 12px; }
   .confirm-dialog-actions { grid-template-columns: 1fr; }
   .api-settings-grid { grid-template-columns: 1fr; }
+  .api-dialog .confirm-dialog-actions { display: flex; flex-direction: column-reverse; }
   .confirm-dialog-actions .button { min-height: 44px; }
   .toast { right: 12px; bottom: 12px; max-width: calc(100vw - 24px); }
 }
