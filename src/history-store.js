@@ -3,9 +3,9 @@ const DB_VERSION = 1;
 const STORE_NAME = "workspace";
 const HISTORY_KEY = "generation-history";
 const API_SETTINGS_KEY = "api-settings";
-const HISTORY_SCHEMA_VERSION = 2;
+const HISTORY_SCHEMA_VERSION = 3;
 const ENTRY_FIELDS = [
-  "id", "batchNumber", "variantTitle", "changeSummary", "promptSnapshot",
+  "id", "batchId", "batchNumber", "batchCreatedAt", "variantTitle", "changeSummary", "promptSnapshot",
   "artClass", "ratio", "createdAt", "status", "imageUrl", "errorMessage"
 ];
 
@@ -14,6 +14,9 @@ function sanitizeEntry(entry) {
   for (const field of ENTRY_FIELDS) {
     if (entry?.[field] !== undefined) clean[field] = entry[field];
   }
+  clean.batchNumber = String(clean.batchNumber || "00");
+  clean.batchId = String(clean.batchId || `legacy_batch_${clean.batchNumber}`);
+  clean.batchCreatedAt = typeof clean.batchCreatedAt === "string" ? clean.batchCreatedAt : "";
   clean.status = ["loading", "ready", "error"].includes(clean.status) ? clean.status : "error";
   return clean;
 }

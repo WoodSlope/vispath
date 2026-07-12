@@ -190,10 +190,36 @@ function syncSubmissionBar() {
   $("selectAllBtn").textContent = allSelected ? "取消全选" : "全选";
 }
 
-function renderGenerationFeed() {
+function groupGenerationEntries() {
+  const groups = new Map();
+  state.generationEntries.forEach((entry) => {
+    const batchId = entry.batchId || `legacy_batch_${entry.batchNumber || "00"}`;
+    if (!groups.has(batchId)) groups.set(batchId, { id: batchId, number: entry.batchNumber || "00", createdAt: entry.batchCreatedAt || entry.createdAt || "", entries: [] });
+    groups.get(batchId).entries.push(entry);
+  });
+  return [...groups.values()];
+}
+
+function formatBatchTime(value) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return value || "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+}
+
+function renderGenerationFeed({ openBatchId = "" } = {}) {
+  const openBatchIds = new Set([...generationFeed.querySelectorAll(".generation-batch[open]")].map((item) => item.dataset.batchId));
+  const batches = groupGenerationEntries();
   $("emptyGenerationBoard").classList.toggle("hidden", state.generationEntries.length > 0);
   $("generationCount").textContent = state.generationEntries.length;
-  generationFeed.innerHTML = state.generationEntries.map((entry) => `
+  if (batches.length) $("feedHint").textContent = `${batches.length} 个批次 · 仅保存在当前浏览器`;
+  generationFeed.innerHTML = batches.map((batch, batchIndex) => `
+    <details class="generation-batch" data-batch-id="${escapeHtml(batch.id)}" ${openBatchId ? batch.id === openBatchId ? "open" : "" : openBatchIds.size ? openBatchIds.has(batch.id) ? "open" : "" : batchIndex === 0 ? "open" : ""}>
+      <summary class="generation-batch-summary">
+        <span><strong>批次 ${escapeHtml(batch.number)}</strong><small>${escapeHtml(formatBatchTime(batch.createdAt))} · ${batch.entries.length} 条结果</small></span>
+        <span class="generation-batch-count">${batch.entries.length}</span>
+      </summary>
+      <div class="generation-batch-grid">
+        ${batch.entries.map((entry) => `
     <article class="generation-card" data-generation-id="${escapeHtml(entry.id)}">
       <div class="generation-card-head">
         <div><strong>${escapeHtml(entry.variantTitle)}</strong><small>批次 ${entry.batchNumber} · ${escapeHtml(entry.createdAt)}</small></div>
@@ -219,6 +245,9 @@ function renderGenerationFeed() {
         </div>
       </div>
     </article>
+        `).join("")}
+      </div>
+    </details>
   `).join("");
   syncStageNav();
 }
@@ -388,7 +417,7 @@ async function restoreGenerationHistory() {
     renderGenerationFeed();
     if (saved && (saved.migrated || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
     if (state.generationEntries.length) {
-      $("feedHint").textContent = `已恢复 ${state.generationEntries.length} 条历史记录`;
+      $("feedHint").textContent = `已恢复 ${state.generationEntries.length} 条 · ${groupGenerationEntries().length} 个批次 · 当前浏览器`;
       if (window.matchMedia("(min-width: 901px)").matches) goToStage("resultStage");
       showToast(`已恢复 ${state.generationEntries.length} 条生成记录`);
     }
@@ -491,10 +520,14 @@ function submitSelected() {
   state.batchNumber += 1;
   const selected = state.blueprint.variants.filter((variant) => state.selectedVariantIds.has(variant.id));
   const now = new Date();
+  const batchId = `batch_${now.getTime()}`;
+  const batchCreatedAt = now.toISOString();
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   const entries = selected.map((variant, index) => ({
     id: `generation_${Date.now()}_${index}`,
+    batchId,
     batchNumber: String(state.batchNumber).padStart(2, "0"),
+    batchCreatedAt,
     variantTitle: variant.title,
     changeSummary: variant.changeSummary,
     promptSnapshot: variant.prompt,
@@ -506,7 +539,7 @@ function submitSelected() {
   state.generationEntries = [...entries, ...state.generationEntries];
   state.selectedVariantIds.clear();
   renderPromptCards();
-  renderGenerationFeed();
+  renderGenerationFeed({ openBatchId: batchId });
   persistGenerationHistory();
   goToStage("resultStage");
   showToast(`已提交 ${entries.length} 套提示词到生成画板`);
