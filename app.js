@@ -291,7 +291,7 @@ async function requestGeneratedImage(entry) {
     throw new Error("生图服务连接失败，请检查网络后重试");
   }
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || `图片生成失败（HTTP ${response.status}）`);
+  if (!response.ok) throw new Error((typeof payload.error === "string" ? payload.error : payload.error?.message) || payload.message || `图片生成失败（HTTP ${response.status}）`);
   const result = payload.data?.[0] || {};
   if (result.b64_json) return { imageUrl: `data:image/png;base64,${result.b64_json}` };
   if (result.url) return { imageUrl: result.url };
@@ -389,6 +389,7 @@ async function restoreGenerationHistory() {
     if (saved && (saved.migrated || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
     if (state.generationEntries.length) {
       $("feedHint").textContent = `已恢复 ${state.generationEntries.length} 条历史记录`;
+      if (window.matchMedia("(min-width: 901px)").matches) setActiveStage("resultStage");
       showToast(`已恢复 ${state.generationEntries.length} 条生成记录`);
     }
     resumePendingImageCleanup();
