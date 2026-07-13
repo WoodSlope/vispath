@@ -3,10 +3,10 @@ const DB_VERSION = 1;
 const STORE_NAME = "workspace";
 const HISTORY_KEY = "generation-history";
 const API_SETTINGS_KEY = "api-settings";
-const HISTORY_SCHEMA_VERSION = 4;
+const HISTORY_SCHEMA_VERSION = 5;
 const ENTRY_FIELDS = [
   "id", "batchId", "batchNumber", "batchCreatedAt", "variantTitle", "changeSummary", "promptSnapshot",
-  "artClass", "ratio", "resolution", "createdAt", "startedAt", "completedAt", "status", "imageUrl", "errorMessage"
+  "artClass", "ratio", "resolution", "createdAt", "startedAt", "completedAt", "status", "imageUrl", "errorMessage", "taskId"
 ];
 
 function sanitizeEntry(entry) {

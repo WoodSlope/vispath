@@ -29,6 +29,7 @@ let pendingRetryEntryId = "";
 let historySaveQueue = Promise.resolve();
 const IMAGE_CLEANUP_KEY = "ai-visual-direction-board-pending-image-cleanup";
 const IMAGE_CLEANUP_DELAY = 5500;
+const IMAGE_POLL_INTERVAL = 3000;
 const imageCleanupTimers = new Map();
 
 function escapeHtml(value) {
@@ -411,33 +412,66 @@ async function requestDirectBlueprint(input) {
 async function requestGeneratedImage(entry) {
   if (shouldSimulateFailure(entry.promptSnapshot)) throw new Error("本地模拟故障：生成服务暂时不可用");
   if (!hasBrowserImageApi()) throw new Error("请先在右上角 API 配置中填写生图服务");
-  let response;
-  try {
-    const url = `${state.apiSettings.imageBaseUrl}/images/generations`;
-    const body = {
-      model: resolveImageModel(state.apiSettings, entry.resolution),
-      prompt: entry.promptSnapshot,
-      n: 1,
-      size: resolveImageSize(entry.ratio),
-      aspect_ratio: entry.ratio || "1:1",
-      response_format: "url",
-      quality: "high"
-    };
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.apiSettings.imageApiKey}` },
-      body: JSON.stringify(body)
-    });
-  } catch {
-    throw new Error("生图连接中断，服务端仍可能生成并扣费；请先核对账单，勿立即重试");
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${state.apiSettings.imageApiKey}` };
+  let taskId = entry.taskId || "";
+  if (!taskId) {
+    let response;
+    try {
+      const url = `${state.apiSettings.imageBaseUrl}/images/generations/async`;
+      const body = {
+        model: resolveImageModel(state.apiSettings, entry.resolution),
+        prompt: entry.promptSnapshot,
+        n: 1,
+        size: resolveImageSize(entry.ratio),
+        aspect_ratio: entry.ratio || "1:1",
+        response_format: "url",
+        quality: "high"
+      };
+      response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+    } catch {
+      throw new Error("异步生图提交连接中断；请先核对账单，勿立即重试");
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error((typeof payload.error === "string" ? payload.error : payload.error?.message) || payload.message || `图片生成提交失败（HTTP ${response.status}）`);
+    taskId = String(payload.task_id || payload.id || "");
+    if (!taskId) {
+      const directResult = payload.data?.[0] || payload.result?.data?.[0] || {};
+      if (directResult.b64_json) return { imageUrl: `data:image/png;base64,${directResult.b64_json}` };
+      if (directResult.url) return { imageUrl: directResult.url };
+      throw new Error("异步生图服务未返回 task_id");
+    }
+    entry.taskId = taskId;
+    await persistGenerationHistory();
   }
-  const payload = await response.json().catch(() => ({}));
-  if ([504, 524].includes(response.status)) throw new Error("生图请求超时，服务端仍可能生成并扣费；请先核对账单，勿立即重试");
-  if (!response.ok) throw new Error((typeof payload.error === "string" ? payload.error : payload.error?.message) || payload.message || `图片生成失败（HTTP ${response.status}）`);
-  const result = payload.data?.[0] || {};
-  if (result.b64_json) return { imageUrl: `data:image/png;base64,${result.b64_json}` };
-  if (result.url) return { imageUrl: result.url };
-  throw new Error("生图服务未返回图片");
+
+  while (true) {
+    let response;
+    try {
+      response = await fetch(`${state.apiSettings.imageBaseUrl}/images/tasks/${encodeURIComponent(taskId)}`, { headers });
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, IMAGE_POLL_INTERVAL));
+      continue;
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (response.status === 429 || response.status >= 500) {
+      await new Promise((resolve) => setTimeout(resolve, IMAGE_POLL_INTERVAL));
+      continue;
+    }
+    if (!response.ok) throw new Error((typeof payload.error === "string" ? payload.error : payload.error?.message) || payload.message || `图片任务查询失败（HTTP ${response.status}）`);
+    const status = String(payload.status || payload.raw_status || "").toLowerCase();
+    if (["queued", "in_progress", "processing", "running", "unknown"].includes(status)) {
+      await new Promise((resolve) => setTimeout(resolve, IMAGE_POLL_INTERVAL));
+      continue;
+    }
+    if (["failed", "error", "cancelled", "canceled"].includes(status)) {
+      throw new Error(payload.fail_reason || payload.error?.message || `图片任务失败（${status}）`);
+    }
+    const result = payload.data?.[0] || payload.result?.data?.[0] || payload.result?.[0] || {};
+    if (result.b64_json) return { imageUrl: `data:image/png;base64,${result.b64_json}` };
+    if (result.url) return { imageUrl: result.url };
+    if (status === "completed" || status === "success") throw new Error("图片任务已完成，但服务未返回图片");
+    throw new Error(`图片任务返回未知状态：${status || "unknown"}`);
+  }
 }
 
 async function checkImageService() {
@@ -551,7 +585,7 @@ async function restoreGenerationHistory() {
     const pendingIds = new Set(readPendingImageCleanup().map((item) => item.entryId));
     let interruptedCount = 0;
     const savedEntries = (saved?.entries || []).map((entry) => {
-      if (entry.status !== "loading") return entry;
+      if (entry.status !== "loading" || entry.taskId) return entry;
       interruptedCount += 1;
       return { ...entry, status: "error", errorMessage: "页面刷新后无法继续接收原请求结果；服务端可能仍在生成并扣费，请先核对账单。" };
     });
@@ -569,6 +603,10 @@ async function restoreGenerationHistory() {
     $("feedHint").textContent = "历史记录暂时无法恢复";
     resumePendingImageCleanup();
   }
+}
+
+function resumePendingGenerationTasks() {
+  state.generationEntries.filter((entry) => entry.status === "loading" && entry.taskId).forEach((entry) => runGeneration(entry));
 }
 
 function showToast(message, action) {
@@ -1011,8 +1049,11 @@ syncDefaultImageRatio();
 setActiveStage("setupStage");
 renderPromptCards();
 renderGenerationFeed();
-loadSavedApiSettings().then(checkImageService);
-restoreGenerationHistory();
+loadSavedApiSettings().then(async () => {
+  checkImageService();
+  await restoreGenerationHistory();
+  resumePendingGenerationTasks();
+});
 updateActiveStageFromScroll();
 setBlueprintCollapsed(window.matchMedia("(max-width: 600px)").matches);
 window.setInterval(updateGenerationElapsed, 1000);
