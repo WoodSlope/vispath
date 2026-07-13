@@ -46,6 +46,8 @@
         </div>
 
         <div class="form-stack">
+          <section class="form-section" aria-labelledby="inputSectionTitle">
+            <div class="form-section-heading"><span class="form-section-index">01</span><h3 id="inputSectionTitle">输入内容</h3></div>
           <div class="field-group">
             <label for="sourcePrompt">原始提示词</label>
             <textarea id="sourcePrompt" rows="7" placeholder="例如：为一家咖啡店做一张夏日开业海报，主体是一杯冰拿铁，画面需要留出标题区。"></textarea>
@@ -65,7 +67,10 @@
               <button class="icon-button" id="removeFileBtn" type="button" aria-label="移除参考图">×</button>
             </div>
           </div>
+          </section>
 
+          <section class="form-section" aria-labelledby="settingsSectionTitle">
+            <div class="form-section-heading"><span class="form-section-index">02</span><h3 id="settingsSectionTitle">生成设置</h3></div>
           <div class="field-group split-fields">
             <div>
               <label for="taskType">创作类型</label>
@@ -104,12 +109,16 @@
             </div>
           </div>
           <p class="helper output-settings-note">当前仅开放已完成实测的分辨率；比例会同时用于提示词约束和生图尺寸。</p>
+          </section>
 
+          <section class="form-section" aria-labelledby="dimensionSectionTitle">
+            <div class="form-section-heading"><span class="form-section-index">03</span><h3 id="dimensionSectionTitle">探索变量</h3></div>
           <fieldset class="field-group dimension-fieldset">
             <legend>本轮探索什么</legend>
             <p class="helper">首版建议只选一个维度，方案差异会更清楚。</p>
             <div class="dimension-list" id="dimensionList"></div>
           </fieldset>
+          </section>
 
           <div class="setup-action" aria-live="polite">
             <button class="button button-primary" id="generateBtn" type="button" aria-describedby="generateHint">
@@ -145,9 +154,8 @@
           </div>
           <p class="panel-helper" id="boardHint">生成后选择需要提交的提示词方案。</p>
           <div class="empty-board compact-empty" id="emptyBoard">
-            <div class="empty-cross" aria-hidden="true">+</div>
-            <h3>等待提示词方案</h3>
-            <p>从左侧建立一次探索，这里会出现可选择、编辑和复制的提示词卡片。</p>
+            <div class="state-marker" aria-hidden="true">+</div>
+            <div class="state-copy"><h3>等待提示词方案</h3><p>从左侧建立一次探索，这里会出现可选择、编辑和复制的提示词卡片。</p></div>
           </div>
           <div class="prompt-list" id="variantGrid"></div>
           <div class="submission-bar">
@@ -169,28 +177,28 @@
           </div>
         </div>
 
-        <div class="generation-overview hidden" id="generationOverview" aria-label="生成任务总览">
-          <button type="button" data-overview-status="loading" aria-pressed="false"><span>生成中</span><strong id="overviewLoadingCount">0</strong></button>
-          <button type="button" data-overview-status="ready" aria-pressed="false"><span>已完成</span><strong id="overviewReadyCount">0</strong></button>
-          <button type="button" data-overview-status="error" aria-pressed="false"><span>失败</span><strong id="overviewErrorCount">0</strong></button>
-        </div>
+        <div class="result-toolbar hidden" id="resultToolbar">
+          <div class="generation-overview hidden" id="generationOverview" aria-label="生成任务总览">
+            <button type="button" data-overview-status="loading" aria-pressed="false"><span>生成中</span><strong id="overviewLoadingCount">0</strong></button>
+            <button type="button" data-overview-status="ready" aria-pressed="false"><span>已完成</span><strong id="overviewReadyCount">0</strong></button>
+            <button type="button" data-overview-status="error" aria-pressed="false"><span>失败</span><strong id="overviewErrorCount">0</strong></button>
+          </div>
 
-        <div class="result-filters hidden" id="resultFilters" aria-label="筛选生成结果">
-          <label class="result-search"><span>搜索结果</span><input id="resultSearchInput" type="search" placeholder="搜索方案、变量或提示词"></label>
-          <label><span class="filter-label">生成状态</span><span class="select-control"><select id="resultStatusFilter"><option value="all">全部状态</option><option value="loading">生成中</option><option value="ready">已完成</option><option value="error">失败</option></select></span></label>
-          <label><span class="filter-label">生成批次</span><span class="select-control"><select id="resultBatchFilter"><option value="all">全部批次</option></select></span></label>
-          <button class="icon-button result-filter-clear" id="clearResultFiltersBtn" type="button" aria-label="清除结果筛选" title="清除筛选">×</button>
+          <div class="result-filters hidden" id="resultFilters" aria-label="筛选生成结果">
+            <label class="result-search"><span>搜索结果</span><input id="resultSearchInput" type="search" placeholder="搜索方案、变量或提示词"></label>
+            <label><span class="filter-label">生成状态</span><span class="select-control"><select id="resultStatusFilter"><option value="all">全部状态</option><option value="loading">生成中</option><option value="ready">已完成</option><option value="error">失败</option></select></span></label>
+            <label><span class="filter-label">生成批次</span><span class="select-control"><select id="resultBatchFilter"><option value="all">全部批次</option></select></span></label>
+            <button class="icon-button result-filter-clear" id="clearResultFiltersBtn" type="button" aria-label="清除结果筛选" title="清除筛选">×</button>
+          </div>
         </div>
 
         <div class="empty-board" id="emptyGenerationBoard">
-          <div class="empty-cross" aria-hidden="true">+</div>
-          <h3>还没有生成记录</h3>
-          <p>在中间选择提示词方案并提交，任务和结果会按时间进入这里。</p>
+          <div class="state-marker" aria-hidden="true">+</div>
+          <div class="state-copy"><h3>还没有生成记录</h3><p>在中间选择提示词方案并提交，任务和结果会按时间进入这里。</p></div>
         </div>
         <div class="empty-board compact-empty hidden" id="filteredGenerationEmpty">
-          <div class="empty-cross" aria-hidden="true">+</div>
-          <h3>没有匹配的生成结果</h3>
-          <p>调整搜索词或筛选条件，或者清除筛选查看全部历史。</p>
+          <div class="state-marker" aria-hidden="true">+</div>
+          <div class="state-copy"><h3>没有匹配的生成结果</h3><p>调整搜索词或筛选条件，或者清除筛选查看全部历史。</p></div>
         </div>
         <div class="generation-feed" id="generationFeed"></div>
       </section>
@@ -279,6 +287,16 @@
         <button class="button" id="cancelRetryGenerationBtn" type="button">暂不重试</button>
         <button class="button button-danger" id="confirmRetryGenerationBtn" type="button">仍要重新生成</button>
       </div>
+    </div>
+  </dialog>
+
+  <dialog class="image-preview-dialog" id="imagePreviewDialog" aria-labelledby="imagePreviewTitle">
+    <div class="image-preview-shell">
+      <div class="image-preview-head">
+        <div><span class="step-label">IMAGE PREVIEW</span><h2 id="imagePreviewTitle">生成图片预览</h2><small id="imagePreviewMeta"></small></div>
+        <button class="icon-button" id="closeImagePreviewBtn" type="button" aria-label="关闭大图预览">×</button>
+      </div>
+      <div class="image-preview-stage"><img id="imagePreviewImage" alt=""></div>
     </div>
   </dialog>
 

@@ -23,6 +23,7 @@ const blueprintToggle = $("toggleBlueprintBtn");
 const apiSettingsDialog = $("apiSettingsDialog");
 const historyDialog = $("historyDialog");
 const retryGenerationDialog = $("retryGenerationDialog");
+const imagePreviewDialog = $("imagePreviewDialog");
 const imageRatioSelect = $("imageRatio");
 let imageRatioOverridden = false;
 let pendingRetryEntryId = "";
@@ -118,9 +119,9 @@ function renderBlueprint(blueprint) {
   const dimension = selectedDimension();
   $("blueprintStatus").textContent = "已建立";
   $("blueprintPanel").innerHTML = `
-    <div class="blueprint-block"><strong>固定内容</strong><p>${escapeHtml(blueprint.locked.intent)}<br>${escapeHtml(blueprint.locked.subject)}</p></div>
-    <div class="blueprint-block"><strong>本轮变化</strong><p>${escapeHtml(dimension.name)} · ${blueprint.variants.length} 套方案</p></div>
-    <div class="blueprint-block"><strong>输出限制</strong><p>${escapeHtml(blueprint.locked.technical.ratio)} · ${escapeHtml(blueprint.locked.textLayout)}</p></div>
+    <div class="blueprint-block"><span class="blueprint-block-index">01</span><div><strong>固定内容</strong><p>${escapeHtml(blueprint.locked.intent)}<br>${escapeHtml(blueprint.locked.subject)}</p></div></div>
+    <div class="blueprint-block"><span class="blueprint-block-index">02</span><div><strong>本轮变化</strong><p>${escapeHtml(dimension.name)} · ${blueprint.variants.length} 套方案</p></div></div>
+    <div class="blueprint-block"><span class="blueprint-block-index">03</span><div><strong>输出限制</strong><p>${escapeHtml(blueprint.locked.technical.ratio)} · ${escapeHtml(blueprint.locked.textLayout)}</p></div></div>
   `;
 }
 
@@ -306,6 +307,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
   const hasEntries = state.generationEntries.length > 0;
   $("emptyGenerationBoard").classList.toggle("hidden", hasEntries);
   $("filteredGenerationEmpty").classList.toggle("hidden", !hasEntries || filteredEntries.length > 0);
+  $("resultToolbar").classList.toggle("hidden", !hasEntries);
   $("resultFilters").classList.toggle("hidden", !hasEntries);
   $("clearResultFiltersBtn").disabled = !state.resultFilters.query && state.resultFilters.status === "all" && state.resultFilters.batchId === "all";
   generationFeed.classList.toggle("hidden", filteredEntries.length === 0);
@@ -314,13 +316,17 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
   if (hasEntries) $("feedHint").textContent = `${filteredEntries.length === state.generationEntries.length ? "" : `显示 ${filteredEntries.length} / ${state.generationEntries.length} · `}${allBatches.length} 个批次 · 当前浏览器`;
   generationFeed.innerHTML = batches.map((batch, batchIndex) => {
     const counts = getBatchStatusCounts(batch.entries);
+    const statusSummary = [
+      counts.ready ? `<span class="is-ready">已完成 ${counts.ready}</span>` : "",
+      counts.error ? `<span class="is-error">失败 ${counts.error}</span>` : "",
+      counts.loading ? `<span class="is-loading">生成中 ${counts.loading}</span>` : ""
+    ].filter(Boolean).join("");
     return `
     <details class="generation-batch" data-batch-id="${escapeHtml(batch.id)}" ${openBatchId ? batch.id === openBatchId ? "open" : "" : hasVisibleOpenBatch ? openBatchIds.has(batch.id) ? "open" : "" : batchIndex === 0 ? "open" : ""}>
       <summary class="generation-batch-summary">
         <span><strong>批次 ${escapeHtml(batch.number)}</strong><small>${escapeHtml(formatBatchTime(batch.createdAt))} · ${batch.entries.length} 条结果</small></span>
         <span class="generation-batch-meta">
-          <span class="generation-batch-stats"><span class="is-ready">已完成 ${counts.ready}</span><span class="is-error">失败 ${counts.error}</span><span class="is-loading">生成中 ${counts.loading}</span></span>
-          <span class="generation-batch-count">${batch.entries.length}</span>
+          <span class="generation-batch-stats">${statusSummary}</span>
           <button class="icon-button generation-batch-delete" type="button" data-action="delete-batch" aria-label="删除批次 ${escapeHtml(batch.number)}，共 ${batch.entries.length} 条结果" title="${counts.loading ? "生成中的批次暂不能删除" : `删除整个批次，共 ${batch.entries.length} 条结果`}" ${counts.loading ? "disabled" : ""}>×</button>
         </span>
       </summary>
@@ -328,28 +334,28 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
         ${batch.entries.map((entry) => `
     <article class="generation-card" data-generation-id="${escapeHtml(entry.id)}">
       <div class="generation-card-head">
-        <div><strong>${escapeHtml(entry.variantTitle)}</strong><small>批次 ${entry.batchNumber} · ${escapeHtml(entry.resolution || "1K")} · ${escapeHtml(entry.ratio || "未设比例")} · ${escapeHtml(entry.createdAt)}</small></div>
+        <div class="generation-card-title"><strong>${escapeHtml(entry.variantTitle)}</strong><small>批次 ${entry.batchNumber} · ${escapeHtml(entry.createdAt)}</small></div>
         <div class="generation-card-tools">
           <span class="generation-status ${escapeHtml(entry.status)}">${entry.status === "ready" ? "已完成" : entry.status === "error" ? "失败" : "生成中"}</span>
           <button class="icon-button generation-delete" type="button" data-action="delete" aria-label="删除${escapeHtml(entry.variantTitle)}记录" title="${entry.status === "loading" ? "生成中暂不能删除" : "删除这条记录"}" ${entry.status === "loading" ? "disabled" : ""}>×</button>
         </div>
       </div>
       <div class="generation-art ${escapeHtml(entry.artClass)} ${entry.status === "loading" ? "is-loading" : ""}">
-        ${entry.imageUrl ? `<img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果">` : `<span>${entry.status === "error" ? "生成失败" : "正在生成"}</span>`}
+        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span>查看大图</span></button>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
       </div>
       <div class="generation-body">
-        <p><strong>变量：</strong>${escapeHtml(entry.changeSummary)}</p>
+        <div class="generation-card-summary"><strong>本轮变化</strong><p>${escapeHtml(entry.changeSummary)}</p></div>
+        <div class="generation-card-meta"><span>${escapeHtml(entry.resolution || "1K")} · ${escapeHtml(entry.ratio || "未设比例")}</span><span>${entry.status !== "loading" && entry.startedAt && entry.completedAt ? `耗时 ${escapeHtml(formatGenerationElapsed(entry.startedAt, entry.completedAt))}` : "等待生成结果"}</span></div>
         ${entry.status === "loading" ? `<div class="generation-progress" role="status"><span class="generation-spinner" aria-hidden="true"></span><span><strong>服务端生成中</strong><small>已等待 <span class="generation-elapsed" data-started-at="${escapeHtml(entry.startedAt || entry.batchCreatedAt)}">${formatGenerationElapsed(entry.startedAt || entry.batchCreatedAt)}</span> · 可继续创建提示词或提交其他方案</small></span></div>` : ""}
-        ${entry.status !== "loading" && entry.startedAt && entry.completedAt ? `<p class="generation-duration"><strong>生成耗时：</strong>${escapeHtml(formatGenerationElapsed(entry.startedAt, entry.completedAt))}</p>` : ""}
         ${entry.status === "error" ? `<p class="generation-error"><strong>失败原因：</strong>${escapeHtml(entry.errorMessage || "模拟生成失败，请重试")}</p>` : ""}
         <details>
           <summary>提示词快照</summary>
           <div class="prompt-preview">${escapeHtml(entry.promptSnapshot)}</div>
         </details>
         <div class="generation-actions">
+          <button class="button button-primary" type="button" data-action="continue">基于此结果细化</button>
           <button class="button" type="button" data-action="copy-generation">复制提示词</button>
           <button class="button" type="button" data-action="retry" ${entry.status === "loading" ? "disabled" : ""}>${entry.status === "loading" ? "生成中" : entry.status === "error" ? "重试" : "重新生成"}</button>
-          <button class="button button-primary" type="button" data-action="continue">基于此结果细化</button>
         </div>
       </div>
     </article>
@@ -508,6 +514,20 @@ function openRetryGenerationDialog(entry) {
 function closeRetryGenerationDialog() {
   pendingRetryEntryId = "";
   retryGenerationDialog.close();
+}
+
+function openImagePreview(entry) {
+  if (!entry?.imageUrl) return;
+  $("imagePreviewTitle").textContent = entry.variantTitle || "生成图片预览";
+  $("imagePreviewMeta").textContent = `批次 ${entry.batchNumber || "00"} · ${entry.resolution || "1K"} · ${entry.ratio || "未设比例"}`;
+  $("imagePreviewImage").src = entry.imageUrl;
+  $("imagePreviewImage").alt = `${entry.variantTitle || "生成结果"}大图预览`;
+  imagePreviewDialog.showModal();
+  $("closeImagePreviewBtn").focus();
+}
+
+function closeImagePreview() {
+  imagePreviewDialog.close();
 }
 
 function confirmRetryGeneration() {
@@ -846,6 +866,10 @@ function handleGenerationAction(event) {
   if (!button || !card) return;
   const entry = state.generationEntries.find((item) => item.id === card.dataset.generationId);
   if (!entry) return;
+  if (button.dataset.action === "open-image") {
+    openImagePreview(entry);
+    return;
+  }
   if (button.dataset.action === "delete") {
     const deletedIndex = state.generationEntries.findIndex((item) => item.id === entry.id);
     state.generationEntries = state.generationEntries.filter((item) => item.id !== entry.id);
@@ -1025,6 +1049,7 @@ $("cleanupHistoryBtn").addEventListener("click", cleanupOldHistory);
 $("cancelHistoryBtn").addEventListener("click", () => historyDialog.close());
 $("cancelRetryGenerationBtn").addEventListener("click", closeRetryGenerationDialog);
 $("confirmRetryGenerationBtn").addEventListener("click", confirmRetryGeneration);
+$("closeImagePreviewBtn").addEventListener("click", closeImagePreview);
 $("cancelResetBtn").addEventListener("click", closeResetDialog);
 $("confirmResetBtn").addEventListener("click", reset);
 $("referenceImage").addEventListener("change", (event) => handleFile(event.target.files?.[0]));
