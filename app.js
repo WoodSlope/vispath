@@ -424,7 +424,7 @@ async function requestGeneratedImage(entry) {
         n: 1,
         size: resolveImageSize(entry.ratio),
         aspect_ratio: entry.ratio || "1:1",
-        response_format: "url",
+        response_format: "b64_json",
         quality: "high"
       };
       response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
