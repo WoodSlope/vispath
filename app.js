@@ -409,45 +409,11 @@ async function requestDirectBlueprint(input) {
   return normalizeDirectBlueprint(typeof content === "string" ? JSON.parse(content) : content, input);
 }
 
-async function requestGeneratedImage(entry) {
-  if (shouldSimulateFailure(entry.promptSnapshot)) throw new Error("本地模拟故障：生成服务暂时不可用");
-  if (!hasBrowserImageApi()) throw new Error("请先在右上角 API 配置中填写生图服务");
-  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${state.apiSettings.imageApiKey}` };
-  let taskId = entry.taskId || "";
-  if (!taskId) {
-    let response;
-    try {
-      const url = `${state.apiSettings.imageBaseUrl}/images/generations/async`;
-      const body = {
-        model: resolveImageModel(state.apiSettings, entry.resolution),
-        prompt: entry.promptSnapshot,
-        n: 1,
-        size: resolveImageSize(entry.ratio),
-        aspect_ratio: entry.ratio || "1:1",
-        response_format: "b64_json",
-        quality: "high"
-      };
-      response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-    } catch {
-      throw new Error("异步生图提交连接中断；请先核对账单，勿立即重试");
-    }
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error((typeof payload.error === "string" ? payload.error : payload.error?.message) || payload.message || `图片生成提交失败（HTTP ${response.status}）`);
-    taskId = String(payload.task_id || payload.id || "");
-    if (!taskId) {
-      const directResult = payload.data?.[0] || payload.result?.data?.[0] || {};
-      if (directResult.b64_json) return { imageUrl: `data:image/png;base64,${directResult.b64_json}` };
-      if (directResult.url) return { imageUrl: directResult.url };
-      throw new Error("异步生图服务未返回 task_id");
-    }
-    entry.taskId = taskId;
-    await persistGenerationHistory();
-  }
-
+async function pollExistingImageTask(entry, headers) {
   while (true) {
     let response;
     try {
-      response = await fetch(`${state.apiSettings.imageBaseUrl}/images/tasks/${encodeURIComponent(taskId)}`, { headers });
+      response = await fetch(`${state.apiSettings.imageBaseUrl}/images/tasks/${encodeURIComponent(entry.taskId)}`, { headers });
     } catch {
       await new Promise((resolve) => setTimeout(resolve, IMAGE_POLL_INTERVAL));
       continue;
@@ -472,6 +438,36 @@ async function requestGeneratedImage(entry) {
     if (status === "completed" || status === "success") throw new Error("图片任务已完成，但服务未返回图片");
     throw new Error(`图片任务返回未知状态：${status || "unknown"}`);
   }
+}
+
+async function requestGeneratedImage(entry) {
+  if (shouldSimulateFailure(entry.promptSnapshot)) throw new Error("本地模拟故障：生成服务暂时不可用");
+  if (!hasBrowserImageApi()) throw new Error("请先在右上角 API 配置中填写生图服务");
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${state.apiSettings.imageApiKey}` };
+  if (entry.taskId) return pollExistingImageTask(entry, headers);
+  let response;
+  try {
+    const url = `${state.apiSettings.imageBaseUrl}/images/generations`;
+    const body = {
+      model: resolveImageModel(state.apiSettings, entry.resolution),
+      prompt: entry.promptSnapshot,
+      n: 1,
+      size: resolveImageSize(entry.ratio),
+      aspect_ratio: entry.ratio || "1:1",
+      response_format: "b64_json",
+      quality: "high"
+    };
+    response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  } catch {
+    throw new Error("生图连接中断，服务端仍可能生成并扣费；请先核对账单，勿立即重试");
+  }
+  const payload = await response.json().catch(() => ({}));
+  if ([504, 524].includes(response.status)) throw new Error("生图请求超时，服务端仍可能生成并扣费；请先核对账单，勿立即重试");
+  if (!response.ok) throw new Error((typeof payload.error === "string" ? payload.error : payload.error?.message) || payload.message || `图片生成失败（HTTP ${response.status}）`);
+  const result = payload.data?.[0] || payload.result?.data?.[0] || {};
+  if (result.b64_json) return { imageUrl: `data:image/png;base64,${result.b64_json}` };
+  if (result.url) return { imageUrl: result.url };
+  throw new Error("生图服务未返回图片");
 }
 
 async function checkImageService() {
