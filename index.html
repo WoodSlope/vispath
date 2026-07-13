@@ -27,12 +27,12 @@
     <nav class="stage-nav" aria-label="工作阶段">
       <button type="button" data-stage-target="setupStage">输入</button>
       <button type="button" data-stage-target="promptStage" disabled>方案</button>
-      <button type="button" data-stage-target="resultStage" disabled>结果</button>
+      <button type="button" data-stage-target="resultStage" disabled>结果 <span class="stage-count hidden" id="activeGenerationNavCount" aria-hidden="true">0</span></button>
     </nav>
     <section class="workspace-grid" aria-label="视觉方向生成工作区">
       <aside class="control-panel" id="setupStage" aria-labelledby="controlTitle">
         <div class="panel-heading">
-          <div>
+          <div class="title-pair">
             <span class="step-label">01 / SETUP</span>
             <h2 id="controlTitle">建立一次探索</h2>
           </div>
@@ -76,6 +76,28 @@
             </div>
           </div>
 
+          <div class="field-group split-fields output-settings">
+            <div>
+              <label for="imageResolution">输出分辨率</label>
+              <div class="select-control"><select id="imageResolution">
+                <option value="1K" selected>标准 1K</option>
+                <option value="2K" disabled>高清 2K · 待完成接口验证</option>
+                <option value="4K" disabled>超清 4K · 待完成接口验证</option>
+              </select></div>
+            </div>
+            <div>
+              <label for="imageRatio">画幅比例</label>
+              <div class="select-control"><select id="imageRatio">
+                <option value="1:1">1:1</option>
+                <option value="3:4" selected>3:4</option>
+                <option value="4:3">4:3</option>
+                <option value="16:9">16:9</option>
+                <option value="9:16">9:16</option>
+              </select></div>
+            </div>
+          </div>
+          <p class="helper output-settings-note">当前仅开放已完成实测的分辨率；比例会同时用于提示词约束和生图尺寸。</p>
+
           <fieldset class="field-group dimension-fieldset">
             <legend>本轮探索什么</legend>
             <p class="helper">首版建议只选一个维度，方案差异会更清楚。</p>
@@ -93,7 +115,7 @@
 
         <div class="inline-blueprint">
           <div class="inline-section-head">
-            <div><span class="step-label">BLUEPRINT</span><h3>提示词蓝图</h3></div>
+            <div class="title-pair"><span class="step-label">BLUEPRINT</span><h3>提示词蓝图</h3></div>
             <div class="inline-section-actions">
               <span class="mini-status" id="blueprintStatus">等待输入</span>
               <button class="icon-button blueprint-toggle" id="toggleBlueprintBtn" type="button" aria-controls="blueprintPanel" aria-expanded="true" aria-label="折叠提示词蓝图" title="展开或折叠提示词蓝图"><span aria-hidden="true">⌄</span></button>
@@ -108,7 +130,7 @@
       <section class="prompt-column" id="promptStage" aria-labelledby="promptTitle" aria-live="polite">
         <div class="workbench-panel">
           <div class="results-heading">
-            <div>
+            <div class="title-pair">
               <span class="step-label">02 / PROMPTS</span>
               <h2 id="promptTitle">提示词方案 <span class="result-count" id="resultCount">0</span></h2>
             </div>
@@ -130,11 +152,20 @@
 
       <section class="results-column" id="resultStage" aria-live="polite" aria-labelledby="generationTitle">
         <div class="results-heading">
-          <div>
+          <div class="title-pair">
             <span class="step-label">03 / GENERATION BOARD</span>
             <h2 id="generationTitle">生成画板 <span class="result-count" id="generationCount">0</span></h2>
           </div>
-          <span class="board-hint" id="feedHint">提交记录会持续保留</span>
+          <div class="results-heading-actions">
+            <span class="board-hint" id="feedHint">提交记录会持续保留</span>
+            <button class="button button-quiet" id="historyManageBtn" type="button">历史管理</button>
+          </div>
+        </div>
+
+        <div class="generation-overview hidden" id="generationOverview" aria-label="生成任务总览">
+          <button type="button" data-overview-status="loading" aria-pressed="false"><span>生成中</span><strong id="overviewLoadingCount">0</strong></button>
+          <button type="button" data-overview-status="ready" aria-pressed="false"><span>已完成</span><strong id="overviewReadyCount">0</strong></button>
+          <button type="button" data-overview-status="error" aria-pressed="false"><span>失败</span><strong id="overviewErrorCount">0</strong></button>
         </div>
 
         <div class="result-filters hidden" id="resultFilters" aria-label="筛选生成结果">
@@ -161,8 +192,10 @@
 
   <dialog class="confirm-dialog api-dialog" id="apiSettingsDialog" aria-labelledby="apiSettingsTitle">
     <div class="confirm-dialog-body">
-      <span class="step-label">BROWSER API MODE</span>
-      <h2 id="apiSettingsTitle">API 配置</h2>
+      <div class="title-pair dialog-title">
+        <span class="step-label">BROWSER API MODE</span>
+        <h2 id="apiSettingsTitle">API 配置</h2>
+      </div>
       <p>配置保存在当前浏览器的 IndexedDB 中，不会写入 GitHub Pages 文件。浏览器直连还需要中转站允许 CORS。</p>
       <div class="api-settings-grid">
         <section class="api-provider-group" aria-labelledby="textApiGroupTitle">
@@ -187,12 +220,57 @@
 
   <dialog class="confirm-dialog" id="resetDialog" aria-labelledby="resetDialogTitle" aria-describedby="resetDialogDescription">
     <div class="confirm-dialog-body">
-      <span class="step-label">RESET WORKSPACE</span>
-      <h2 id="resetDialogTitle">确认重置工作台？</h2>
+      <div class="title-pair dialog-title">
+        <span class="step-label">RESET WORKSPACE</span>
+        <h2 id="resetDialogTitle">确认重置工作台？</h2>
+      </div>
       <p id="resetDialogDescription">当前输入、提示词方案和本地生成历史都会被清空，操作后无法恢复。</p>
       <div class="confirm-dialog-actions">
         <button class="button" id="cancelResetBtn" type="button">取消</button>
         <button class="button button-danger" id="confirmResetBtn" type="button">确认重置</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="confirm-dialog history-dialog" id="historyDialog" aria-labelledby="historyDialogTitle">
+    <div class="confirm-dialog-body">
+      <div class="title-pair dialog-title">
+        <span class="step-label">LOCAL HISTORY</span>
+        <h2 id="historyDialogTitle">历史管理</h2>
+      </div>
+      <p>生成记录保存在当前浏览器中。清理旧记录不会影响当前输入和 API 配置。</p>
+      <div class="history-stats" aria-label="本地历史统计">
+        <div><strong id="historyEntryCount">0</strong><span>条结果</span></div>
+        <div><strong id="historyBatchCount">0</strong><span>个批次</span></div>
+        <div><strong id="historyImageCount">0</strong><span>条带图片</span></div>
+        <div><strong id="historyStorageEstimate">--</strong><span>浏览器占用</span></div>
+      </div>
+      <label class="history-retention" for="historyKeepCount">清理范围
+        <span class="select-control"><select id="historyKeepCount">
+          <option value="20">保留最近 20 条</option>
+          <option value="10" selected>保留最近 10 条</option>
+          <option value="5">保留最近 5 条</option>
+          <option value="0">全部清空</option>
+        </select></span>
+      </label>
+      <p class="history-cleanup-hint" id="historyCleanupHint">当前没有需要清理的旧记录。</p>
+      <div class="confirm-dialog-actions">
+        <button class="button" id="cancelHistoryBtn" type="button">取消</button>
+        <button class="button button-danger" id="cleanupHistoryBtn" type="button" disabled>清理旧记录</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="confirm-dialog" id="retryGenerationDialog" aria-labelledby="retryGenerationDialogTitle" aria-describedby="retryGenerationDialogDescription">
+    <div class="confirm-dialog-body">
+      <div class="title-pair dialog-title">
+        <span class="step-label">RETRY GENERATION</span>
+        <h2 id="retryGenerationDialogTitle">确认重新生成？</h2>
+      </div>
+      <p id="retryGenerationDialogDescription">请求超时或连接中断时，服务端仍可能已经生成并扣费。请先核对供应商账单，确认后再重新提交。</p>
+      <div class="confirm-dialog-actions">
+        <button class="button" id="cancelRetryGenerationBtn" type="button">暂不重试</button>
+        <button class="button button-danger" id="confirmRetryGenerationBtn" type="button">仍要重新生成</button>
       </div>
     </div>
   </dialog>

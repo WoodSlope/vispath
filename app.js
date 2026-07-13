@@ -21,6 +21,11 @@ const stageButtons = [...document.querySelectorAll(".stage-nav [data-stage-targe
 const blueprintSection = document.querySelector(".inline-blueprint");
 const blueprintToggle = $("toggleBlueprintBtn");
 const apiSettingsDialog = $("apiSettingsDialog");
+const historyDialog = $("historyDialog");
+const retryGenerationDialog = $("retryGenerationDialog");
+const imageRatioSelect = $("imageRatio");
+let imageRatioOverridden = false;
+let pendingRetryEntryId = "";
 let historySaveQueue = Promise.resolve();
 const IMAGE_CLEANUP_KEY = "ai-visual-direction-board-pending-image-cleanup";
 const IMAGE_CLEANUP_DELAY = 5500;
@@ -36,6 +41,22 @@ function escapeHtml(value) {
 
 function hasBrowserTextApi() { return Boolean(state.apiSettings?.textApiKey && state.apiSettings?.textBaseUrl); }
 function hasBrowserImageApi() { return Boolean(state.apiSettings?.imageApiKey && state.apiSettings?.imageBaseUrl); }
+
+function resolveImageModel(settings, resolution) {
+  const configuredModel = String(settings?.imageModel || "gpt-image-2").trim();
+  if (!/^gpt-image-2(?:-(?:1k|2k|4k))?$/.test(configuredModel)) return configuredModel;
+  return `gpt-image-2-${String(resolution || "1K").toLowerCase()}`;
+}
+
+function resolveImageSize(ratio) {
+  return {
+    "1:1": "1024x1024",
+    "16:9": "1792x1024",
+    "9:16": "1024x1792",
+    "4:3": "1024x768",
+    "3:4": "768x1024"
+  }[ratio] || "1024x1024";
+}
 
 function fillApiSettingsForm(settings = {}) {
   $("textBaseUrlInput").value = settings.textBaseUrl || "";
@@ -59,6 +80,10 @@ function readApiSettingsForm() {
 
 function getTaskType() {
   return TASK_TYPES.find((item) => item.id === taskTypeSelect.value) || TASK_TYPES[0];
+}
+
+function syncDefaultImageRatio() {
+  if (!imageRatioOverridden) imageRatioSelect.value = getTaskType().defaultRatio;
 }
 
 function getAvailableDimensions() {
@@ -226,6 +251,46 @@ function formatBatchTime(value) {
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
 }
 
+function formatGenerationElapsed(startedAt, completedAt = "") {
+  const start = new Date(startedAt).getTime();
+  const end = completedAt ? new Date(completedAt).getTime() : Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "时间未知";
+  const seconds = Math.floor((end - start) / 1000);
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} 分 ${seconds % 60} 秒`;
+}
+
+function updateGenerationElapsed() {
+  document.querySelectorAll(".generation-elapsed[data-started-at]").forEach((element) => {
+    element.textContent = formatGenerationElapsed(element.dataset.startedAt);
+  });
+}
+
+function getBatchStatusCounts(entries) {
+  return entries.reduce((counts, entry) => {
+    counts[entry.status] += 1;
+    return counts;
+  }, { ready: 0, error: 0, loading: 0 });
+}
+
+function syncGenerationOverview() {
+  const counts = getBatchStatusCounts(state.generationEntries);
+  const navCount = $("activeGenerationNavCount");
+  $("generationOverview").classList.toggle("hidden", state.generationEntries.length === 0);
+  $("overviewLoadingCount").textContent = counts.loading;
+  $("overviewReadyCount").textContent = counts.ready;
+  $("overviewErrorCount").textContent = counts.error;
+  navCount.textContent = counts.loading;
+  navCount.classList.toggle("hidden", counts.loading === 0);
+  const resultStageButton = document.querySelector('[data-stage-target="resultStage"]');
+  resultStageButton.classList.toggle("has-active-generation", counts.loading > 0);
+  resultStageButton.setAttribute("aria-label", counts.loading ? `结果，${counts.loading} 张图片生成中` : "结果");
+  document.querySelectorAll("[data-overview-status]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(state.resultFilters.status === button.dataset.overviewStatus));
+  });
+}
+
 function renderGenerationFeed({ openBatchId = "" } = {}) {
   const openBatchIds = new Set([...generationFeed.querySelectorAll(".generation-batch[open]")].map((item) => item.dataset.batchId));
   const allBatches = groupGenerationEntries();
@@ -240,21 +305,28 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
   $("clearResultFiltersBtn").disabled = !state.resultFilters.query && state.resultFilters.status === "all" && state.resultFilters.batchId === "all";
   generationFeed.classList.toggle("hidden", filteredEntries.length === 0);
   $("generationCount").textContent = state.generationEntries.length;
+  syncGenerationOverview();
   if (hasEntries) $("feedHint").textContent = `${filteredEntries.length === state.generationEntries.length ? "" : `显示 ${filteredEntries.length} / ${state.generationEntries.length} · `}${allBatches.length} 个批次 · 当前浏览器`;
-  generationFeed.innerHTML = batches.map((batch, batchIndex) => `
+  generationFeed.innerHTML = batches.map((batch, batchIndex) => {
+    const counts = getBatchStatusCounts(batch.entries);
+    return `
     <details class="generation-batch" data-batch-id="${escapeHtml(batch.id)}" ${openBatchId ? batch.id === openBatchId ? "open" : "" : hasVisibleOpenBatch ? openBatchIds.has(batch.id) ? "open" : "" : batchIndex === 0 ? "open" : ""}>
       <summary class="generation-batch-summary">
         <span><strong>批次 ${escapeHtml(batch.number)}</strong><small>${escapeHtml(formatBatchTime(batch.createdAt))} · ${batch.entries.length} 条结果</small></span>
-        <span class="generation-batch-count">${batch.entries.length}</span>
+        <span class="generation-batch-meta">
+          <span class="generation-batch-stats"><span class="is-ready">已完成 ${counts.ready}</span><span class="is-error">失败 ${counts.error}</span><span class="is-loading">生成中 ${counts.loading}</span></span>
+          <span class="generation-batch-count">${batch.entries.length}</span>
+          <button class="icon-button generation-batch-delete" type="button" data-action="delete-batch" aria-label="删除批次 ${escapeHtml(batch.number)}，共 ${batch.entries.length} 条结果" title="${counts.loading ? "生成中的批次暂不能删除" : `删除整个批次，共 ${batch.entries.length} 条结果`}" ${counts.loading ? "disabled" : ""}>×</button>
+        </span>
       </summary>
       <div class="generation-batch-grid${batch.entries.length === 1 ? " is-single" : ""}">
         ${batch.entries.map((entry) => `
     <article class="generation-card" data-generation-id="${escapeHtml(entry.id)}">
       <div class="generation-card-head">
-        <div><strong>${escapeHtml(entry.variantTitle)}</strong><small>批次 ${entry.batchNumber} · ${escapeHtml(entry.createdAt)}</small></div>
+        <div><strong>${escapeHtml(entry.variantTitle)}</strong><small>批次 ${entry.batchNumber} · ${escapeHtml(entry.resolution || "1K")} · ${escapeHtml(entry.ratio || "未设比例")} · ${escapeHtml(entry.createdAt)}</small></div>
         <div class="generation-card-tools">
           <span class="generation-status ${escapeHtml(entry.status)}">${entry.status === "ready" ? "已完成" : entry.status === "error" ? "失败" : "生成中"}</span>
-          <button class="icon-button generation-delete" type="button" data-action="delete" aria-label="删除${escapeHtml(entry.variantTitle)}记录" title="删除这条记录">×</button>
+          <button class="icon-button generation-delete" type="button" data-action="delete" aria-label="删除${escapeHtml(entry.variantTitle)}记录" title="${entry.status === "loading" ? "生成中暂不能删除" : "删除这条记录"}" ${entry.status === "loading" ? "disabled" : ""}>×</button>
         </div>
       </div>
       <div class="generation-art ${escapeHtml(entry.artClass)} ${entry.status === "loading" ? "is-loading" : ""}">
@@ -262,6 +334,8 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
       </div>
       <div class="generation-body">
         <p><strong>变量：</strong>${escapeHtml(entry.changeSummary)}</p>
+        ${entry.status === "loading" ? `<div class="generation-progress" role="status"><span class="generation-spinner" aria-hidden="true"></span><span><strong>服务端生成中</strong><small>已等待 <span class="generation-elapsed" data-started-at="${escapeHtml(entry.startedAt || entry.batchCreatedAt)}">${formatGenerationElapsed(entry.startedAt || entry.batchCreatedAt)}</span> · 可继续创建提示词或提交其他方案</small></span></div>` : ""}
+        ${entry.status !== "loading" && entry.startedAt && entry.completedAt ? `<p class="generation-duration"><strong>生成耗时：</strong>${escapeHtml(formatGenerationElapsed(entry.startedAt, entry.completedAt))}</p>` : ""}
         ${entry.status === "error" ? `<p class="generation-error"><strong>失败原因：</strong>${escapeHtml(entry.errorMessage || "模拟生成失败，请重试")}</p>` : ""}
         <details>
           <summary>提示词快照</summary>
@@ -269,7 +343,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
         </details>
         <div class="generation-actions">
           <button class="button" type="button" data-action="copy-generation">复制提示词</button>
-          <button class="button" type="button" data-action="retry">${entry.status === "error" ? "重试" : "重新生成"}</button>
+          <button class="button" type="button" data-action="retry" ${entry.status === "loading" ? "disabled" : ""}>${entry.status === "loading" ? "生成中" : entry.status === "error" ? "重试" : "重新生成"}</button>
           <button class="button button-primary" type="button" data-action="continue">基于此结果细化</button>
         </div>
       </div>
@@ -277,7 +351,8 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
         `).join("")}
       </div>
     </details>
-  `).join("");
+  `;
+  }).join("");
   syncStageNav();
 }
 
@@ -304,7 +379,7 @@ function normalizeDirectBlueprint(value, input) {
     variants: variants.map((item, index) => ({
       id: `variant_${Date.now()}_${index + 1}`, title: String(item.title || `方向 ${index + 1}`),
       changed: { [input.dimensionId]: String(item.title || "") }, changeSummary: String(item.changeSummary || `只改变${input.dimensionName}`),
-      prompt: String(item.prompt || ""), generation: { ratio: input.ratio, imageCount: 1 }, artClass: ["art-editorial", "art-retro", "art-future", "art-lifestyle"][index % 4]
+      prompt: String(item.prompt || ""), generation: { ratio: input.ratio, resolution: input.resolution, imageCount: 1 }, artClass: ["art-editorial", "art-retro", "art-future", "art-lifestyle"][index % 4]
     }))
   };
 }
@@ -339,16 +414,25 @@ async function requestGeneratedImage(entry) {
   let response;
   try {
     const url = `${state.apiSettings.imageBaseUrl}/images/generations`;
-    const body = { model: state.apiSettings.imageModel, prompt: entry.promptSnapshot, n: 1, size: "1024x1024", quality: "high" };
+    const body = {
+      model: resolveImageModel(state.apiSettings, entry.resolution),
+      prompt: entry.promptSnapshot,
+      n: 1,
+      size: resolveImageSize(entry.ratio),
+      aspect_ratio: entry.ratio || "1:1",
+      response_format: "url",
+      quality: "high"
+    };
     response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.apiSettings.imageApiKey}` },
       body: JSON.stringify(body)
     });
   } catch {
-    throw new Error("生图服务连接失败，请检查网络后重试");
+    throw new Error("生图连接中断，服务端仍可能生成并扣费；请先核对账单，勿立即重试");
   }
   const payload = await response.json().catch(() => ({}));
+  if ([504, 524].includes(response.status)) throw new Error("生图请求超时，服务端仍可能生成并扣费；请先核对账单，勿立即重试");
   if (!response.ok) throw new Error((typeof payload.error === "string" ? payload.error : payload.error?.message) || payload.message || `图片生成失败（HTTP ${response.status}）`);
   const result = payload.data?.[0] || {};
   if (result.b64_json) return { imageUrl: `data:image/png;base64,${result.b64_json}` };
@@ -375,9 +459,34 @@ async function runGeneration(entry) {
     entry.status = "error";
     entry.errorMessage = error.message || "图片生成失败，请重试";
   }
+  entry.completedAt = new Date().toISOString();
   renderGenerationFeed();
   await persistGenerationHistory();
-  showToast(entry.status === "ready" ? "真实图片已生成" : "生成失败，可点击重试恢复");
+  showToast(entry.status === "ready" ? "真实图片已生成" : "生成未完成，请先核对账单再决定是否重试");
+}
+
+function openRetryGenerationDialog(entry) {
+  pendingRetryEntryId = entry.id;
+  retryGenerationDialog.showModal();
+  $("cancelRetryGenerationBtn").focus();
+}
+
+function closeRetryGenerationDialog() {
+  pendingRetryEntryId = "";
+  retryGenerationDialog.close();
+}
+
+function confirmRetryGeneration() {
+  const entry = state.generationEntries.find((item) => item.id === pendingRetryEntryId);
+  closeRetryGenerationDialog();
+  if (!entry) return;
+  entry.status = "loading";
+  entry.errorMessage = "";
+  entry.startedAt = new Date().toISOString();
+  entry.completedAt = "";
+  renderGenerationFeed();
+  persistGenerationHistory();
+  runGeneration(entry);
 }
 
 function persistGenerationHistory() {
@@ -440,15 +549,20 @@ async function restoreGenerationHistory() {
   try {
     const saved = await loadGenerationHistory();
     const pendingIds = new Set(readPendingImageCleanup().map((item) => item.entryId));
-    const savedEntries = saved?.entries || [];
+    let interruptedCount = 0;
+    const savedEntries = (saved?.entries || []).map((entry) => {
+      if (entry.status !== "loading") return entry;
+      interruptedCount += 1;
+      return { ...entry, status: "error", errorMessage: "页面刷新后无法继续接收原请求结果；服务端可能仍在生成并扣费，请先核对账单。" };
+    });
     state.generationEntries = savedEntries.filter((entry) => !pendingIds.has(entry.id));
     state.batchNumber = Number(saved?.batchNumber) || 0;
     renderGenerationFeed();
-    if (saved && (saved.migrated || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
+    if (saved && (saved.migrated || interruptedCount || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
     if (state.generationEntries.length) {
       $("feedHint").textContent = `已恢复 ${state.generationEntries.length} 条 · ${groupGenerationEntries().length} 个批次 · 当前浏览器`;
       if (window.matchMedia("(min-width: 901px)").matches) goToStage("resultStage");
-      showToast(`已恢复 ${state.generationEntries.length} 条生成记录`);
+      showToast(interruptedCount ? `已恢复记录，其中 ${interruptedCount} 条需核对账单` : `已恢复 ${state.generationEntries.length} 条生成记录`);
     }
     resumePendingImageCleanup();
   } catch {
@@ -480,6 +594,57 @@ function showToast(message, action) {
   }, action ? 5000 : 2200);
 }
 
+function formatStorageEstimate(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "--";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function openHistoryDialog() {
+  const entries = state.generationEntries;
+  const batchCount = groupGenerationEntries(entries).length;
+  const keepCount = Number($("historyKeepCount").value);
+  $("historyEntryCount").textContent = entries.length;
+  $("historyBatchCount").textContent = batchCount;
+  $("historyImageCount").textContent = entries.filter((entry) => entry.imageUrl).length;
+  $("historyStorageEstimate").textContent = "--";
+  if (navigator.storage?.estimate) {
+    const estimate = await navigator.storage.estimate().catch(() => null);
+    if (estimate?.usage) $("historyStorageEstimate").textContent = formatStorageEstimate(estimate.usage);
+  }
+  syncHistoryCleanupState(keepCount);
+  historyDialog.showModal();
+}
+
+function syncHistoryCleanupState(keepCount = Number($("historyKeepCount").value)) {
+  const removeCount = Math.max(0, state.generationEntries.length - keepCount);
+  $("cleanupHistoryBtn").disabled = removeCount === 0;
+  $("cleanupHistoryBtn").textContent = keepCount === 0 ? "全部清空" : "清理旧记录";
+  $("historyCleanupHint").textContent = removeCount ? `将清理 ${removeCount} 条最旧记录，保留最新 ${keepCount} 条。` : "当前没有需要清理的旧记录。";
+}
+
+async function cleanupOldHistory() {
+  const keepCount = Number($("historyKeepCount").value);
+  const removedEntries = state.generationEntries.slice(keepCount);
+  if (!removedEntries.length) return;
+  state.generationEntries = state.generationEntries.slice(0, keepCount);
+  removedEntries.forEach((entry) => queueGeneratedImageCleanup(entry));
+  renderGenerationFeed();
+  await persistGenerationHistory();
+  historyDialog.close();
+  showToast(`已清理 ${removedEntries.length} 条旧记录`, {
+    label: "撤销",
+    onClick: () => {
+      removedEntries.forEach((entry) => removePendingImageCleanup(entry.id));
+      state.generationEntries.push(...removedEntries);
+      renderGenerationFeed();
+      persistGenerationHistory();
+      showToast(`已恢复 ${removedEntries.length} 条历史记录`);
+    }
+  });
+}
+
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -508,7 +673,7 @@ async function generateDirections() {
   try {
     const type = getTaskType();
     const dimension = selectedDimension();
-    const input = { prompt: $("sourcePrompt").value.trim(), taskTypeId: type.id, taskTypeName: type.name, dimensionId: dimension.id, dimensionName: dimension.name, optionCount: Number($("optionCount").value), ratio: type.defaultRatio, referenceImage: state.referenceImageData };
+    const input = { prompt: $("sourcePrompt").value.trim(), taskTypeId: type.id, taskTypeName: type.name, dimensionId: dimension.id, dimensionName: dimension.name, optionCount: Number($("optionCount").value), ratio: imageRatioSelect.value, resolution: $("imageResolution").value, referenceImage: state.referenceImageData };
     if (!hasBrowserTextApi()) throw new Error("请先在右上角 API 配置中填写文本服务");
     state.blueprint = await requestDirectBlueprint(input);
     state.selectedVariantIds.clear();
@@ -562,7 +727,10 @@ function submitSelected() {
     promptSnapshot: variant.prompt,
     artClass: variant.artClass,
     ratio: variant.generation.ratio,
+    resolution: variant.generation.resolution,
     createdAt: time,
+    startedAt: batchCreatedAt,
+    completedAt: "",
     status: "loading"
   }));
   state.generationEntries = [...entries, ...state.generationEntries];
@@ -572,7 +740,7 @@ function submitSelected() {
   renderGenerationFeed({ openBatchId: batchId });
   persistGenerationHistory();
   goToStage("resultStage");
-  showToast(`已提交 ${entries.length} 套提示词到生成画板`);
+  showToast(`已提交 ${entries.length} 套，后台生成中；可继续创建或提交其他方案`);
   entries.forEach((entry) => runGeneration(entry));
 }
 
@@ -596,6 +764,31 @@ function resetResultFilters() {
 
 function handleGenerationAction(event) {
   const button = event.target.closest("button[data-action]");
+  const batchNode = event.target.closest(".generation-batch");
+  if (button?.dataset.action === "delete-batch" && batchNode) {
+    event.preventDefault();
+    event.stopPropagation();
+    const batchId = batchNode.dataset.batchId;
+    const deletedEntries = state.generationEntries.filter((entry) => (entry.batchId || `legacy_batch_${entry.batchNumber || "00"}`) === batchId);
+    if (!deletedEntries.length) return;
+    const firstIndex = state.generationEntries.findIndex((entry) => entry.id === deletedEntries[0].id);
+    state.generationEntries = state.generationEntries.filter((entry) => !deletedEntries.some((item) => item.id === entry.id));
+    deletedEntries.forEach((entry) => queueGeneratedImageCleanup(entry));
+    renderGenerationFeed();
+    persistGenerationHistory();
+    if (state.generationEntries.length === 0) $("feedHint").textContent = "提交记录会持续保留";
+    showToast(`已删除批次 ${deletedEntries[0].batchNumber}（${deletedEntries.length} 条结果）`, {
+      label: "撤销",
+      onClick: () => {
+        deletedEntries.forEach((entry) => removePendingImageCleanup(entry.id));
+        state.generationEntries.splice(firstIndex, 0, ...deletedEntries);
+        renderGenerationFeed({ openBatchId: batchId });
+        persistGenerationHistory();
+        showToast(`已恢复批次 ${deletedEntries[0].batchNumber}（${deletedEntries.length} 条结果）`);
+      }
+    });
+    return;
+  }
   const card = event.target.closest("[data-generation-id]");
   if (!button || !card) return;
   const entry = state.generationEntries.find((item) => item.id === card.dataset.generationId);
@@ -632,11 +825,7 @@ function handleGenerationAction(event) {
     return;
   }
   if (button.dataset.action === "retry") {
-    entry.status = "loading";
-    entry.errorMessage = "";
-    renderGenerationFeed();
-    persistGenerationHistory();
-    runGeneration(entry);
+    openRetryGenerationDialog(entry);
   }
 }
 
@@ -702,7 +891,21 @@ async function loadSavedApiSettings() {
 }
 
 async function saveBrowserApiSettings() {
-  state.apiSettings = readApiSettingsForm();
+  const nextSettings = readApiSettingsForm();
+  const previousSettings = state.apiSettings || {};
+  if (!nextSettings.imageBaseUrl && nextSettings.imageApiKey && previousSettings.imageBaseUrl) {
+    nextSettings.imageBaseUrl = previousSettings.imageBaseUrl;
+  }
+  if (!nextSettings.textBaseUrl && nextSettings.textApiKey && previousSettings.textBaseUrl) {
+    nextSettings.textBaseUrl = previousSettings.textBaseUrl;
+  }
+  const missingImageUrl = nextSettings.imageApiKey && !nextSettings.imageBaseUrl;
+  const missingTextUrl = nextSettings.textApiKey && !nextSettings.textBaseUrl;
+  if (missingImageUrl || missingTextUrl) {
+    showToast(missingImageUrl ? "请填写生图服务接口地址" : "请填写文本服务接口地址");
+    return;
+  }
+  state.apiSettings = nextSettings;
   await saveApiSettings(state.apiSettings);
   apiSettingsDialog.close();
   await checkImageService();
@@ -752,8 +955,10 @@ async function reset() {
 
 taskTypeSelect.addEventListener("change", () => {
   renderDimensions();
+  syncDefaultImageRatio();
   if (state.blueprint) showToast("创作类型已改变，请重新生成提示词方案");
 });
+imageRatioSelect.addEventListener("change", () => { imageRatioOverridden = true; });
 $("generateBtn").addEventListener("click", generateDirections);
 $("submitSelectedBtn").addEventListener("click", submitSelected);
 $("selectAllBtn").addEventListener("click", selectAllPrompts);
@@ -761,6 +966,12 @@ $("resetBtn").addEventListener("click", openResetDialog);
 $("apiSettingsBtn").addEventListener("click", () => { fillApiSettingsForm(state.apiSettings || {}); apiSettingsDialog.showModal(); });
 $("saveApiSettingsBtn").addEventListener("click", saveBrowserApiSettings);
 $("clearApiSettingsBtn").addEventListener("click", clearBrowserApiSettings);
+$("historyManageBtn").addEventListener("click", openHistoryDialog);
+$("historyKeepCount").addEventListener("change", (event) => syncHistoryCleanupState(Number(event.target.value)));
+$("cleanupHistoryBtn").addEventListener("click", cleanupOldHistory);
+$("cancelHistoryBtn").addEventListener("click", () => historyDialog.close());
+$("cancelRetryGenerationBtn").addEventListener("click", closeRetryGenerationDialog);
+$("confirmRetryGenerationBtn").addEventListener("click", confirmRetryGeneration);
 $("cancelResetBtn").addEventListener("click", closeResetDialog);
 $("confirmResetBtn").addEventListener("click", reset);
 $("referenceImage").addEventListener("change", (event) => handleFile(event.target.files?.[0]));
@@ -775,6 +986,13 @@ generationFeed.addEventListener("click", handleGenerationAction);
 $("resultSearchInput").addEventListener("input", (event) => { state.resultFilters.query = event.target.value; renderGenerationFeed(); });
 $("resultStatusFilter").addEventListener("change", (event) => { state.resultFilters.status = event.target.value; renderGenerationFeed(); });
 $("resultBatchFilter").addEventListener("change", (event) => { state.resultFilters.batchId = event.target.value; renderGenerationFeed(); });
+$("generationOverview").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-overview-status]");
+  if (!button) return;
+  state.resultFilters.status = state.resultFilters.status === button.dataset.overviewStatus ? "all" : button.dataset.overviewStatus;
+  $("resultStatusFilter").value = state.resultFilters.status;
+  renderGenerationFeed();
+});
 $("clearResultFiltersBtn").addEventListener("click", clearResultFilters);
 document.querySelector(".stage-nav").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-stage-target]");
@@ -789,6 +1007,7 @@ window.matchMedia("(max-width: 600px)").addEventListener("change", () => {
 
 renderTaskTypes();
 renderDimensions();
+syncDefaultImageRatio();
 setActiveStage("setupStage");
 renderPromptCards();
 renderGenerationFeed();
@@ -796,3 +1015,4 @@ loadSavedApiSettings().then(checkImageService);
 restoreGenerationHistory();
 updateActiveStageFromScroll();
 setBlueprintCollapsed(window.matchMedia("(max-width: 600px)").matches);
+window.setInterval(updateGenerationElapsed, 1000);
