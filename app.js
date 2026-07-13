@@ -145,21 +145,25 @@ function renderPromptCards() {
   $("resultCount").textContent = variants.length;
   $("selectAllBtn").disabled = variants.length === 0;
   $("boardHint").textContent = variants.length ? `本轮仅变化：${selectedDimension().name}` : "生成后选择需要提交的提示词方案。";
+  promptList.dataset.count = String(variants.length);
   promptList.innerHTML = variants.map((variant, index) => {
     const selected = state.selectedVariantIds.has(variant.id);
+    const promptPreviewId = `promptPreview${index}`;
     return `
       <article class="prompt-card ${selected ? "selected" : ""}" data-variant-id="${escapeHtml(variant.id)}">
         <label class="prompt-card-selector">
           <input type="checkbox" data-action="select" ${selected ? "checked" : ""}>
-          <span><strong>${escapeHtml(variant.title)}</strong><small>方案 ${index + 1}</small></span>
+          <span><small>方案 ${String(index + 1).padStart(2, "0")}</small><strong>${escapeHtml(variant.title)}</strong></span>
         </label>
-        <p class="changed-line"><strong>变化：</strong>${escapeHtml(variant.changeSummary)}</p>
-        <p class="locked-line"><strong>保持：</strong>主体、场景、比例、信息区域</p>
-        <details class="prompt-details">
-          <summary>查看完整提示词</summary>
-          <div class="prompt-preview">${escapeHtml(variant.prompt)}</div>
-        </details>
-        <button class="button button-quiet prompt-copy" type="button" data-action="copy">复制提示词</button>
+        <div class="prompt-card-specs">
+          <p class="changed-line"><strong>本轮变化</strong><span>${escapeHtml(variant.changeSummary)}</span></p>
+          <p class="locked-line"><strong>固定条件</strong><span>主体、场景、比例、信息区域</span></p>
+        </div>
+        <div class="prompt-card-actions">
+          <button class="button button-quiet prompt-detail-toggle" type="button" data-action="toggle-prompt" aria-expanded="false" aria-controls="${promptPreviewId}">完整提示词</button>
+          <button class="button button-quiet prompt-copy" type="button" data-action="copy">复制</button>
+        </div>
+        <div class="prompt-preview hidden" id="${promptPreviewId}">${escapeHtml(variant.prompt)}</div>
       </article>
     `;
   }).join("");
@@ -738,9 +742,24 @@ function handlePromptAction(event) {
   const variant = state.blueprint.variants.find((item) => item.id === card.dataset.variantId);
   if (!variant) return;
   const actionNode = event.target.closest("[data-action]");
-  if (!actionNode) return;
-  if (actionNode.dataset.action === "select") toggleVariant(variant.id, actionNode.checked);
-  if (actionNode.dataset.action === "copy") copyText(variant.prompt);
+  if (actionNode?.dataset.action === "select") {
+    toggleVariant(variant.id, actionNode.checked);
+    return;
+  }
+  if (actionNode?.dataset.action === "copy") {
+    copyText(variant.prompt);
+    return;
+  }
+  if (actionNode?.dataset.action === "toggle-prompt") {
+    const preview = card.querySelector(".prompt-preview");
+    const expanded = actionNode.getAttribute("aria-expanded") === "true";
+    actionNode.setAttribute("aria-expanded", String(!expanded));
+    actionNode.textContent = expanded ? "完整提示词" : "收起提示词";
+    preview.classList.toggle("hidden", expanded);
+    return;
+  }
+  if (event.target.closest("button, input, label, a, .prompt-preview")) return;
+  toggleVariant(variant.id, !state.selectedVariantIds.has(variant.id));
 }
 
 function submitSelected() {
