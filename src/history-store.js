@@ -3,11 +3,16 @@ const DB_VERSION = 1;
 const STORE_NAME = "workspace";
 const HISTORY_KEY = "generation-history";
 const API_SETTINGS_KEY = "api-settings";
-const HISTORY_SCHEMA_VERSION = 5;
+const HISTORY_SCHEMA_VERSION = 9;
 const ENTRY_FIELDS = [
   "id", "batchId", "batchNumber", "batchCreatedAt", "variantTitle", "changeSummary", "promptSnapshot",
-  "artClass", "ratio", "resolution", "createdAt", "startedAt", "completedAt", "status", "imageUrl", "errorMessage", "taskId"
+  "artClass", "ratio", "resolution", "generationMode", "responseFormat", "actualResponseFormat", "createdAt", "startedAt", "completedAt", "status", "imageUrl", "imageWidth", "imageHeight", "errorMessage", "requestId", "taskId", "taskStatus", "taskProgress", "favorite"
 ];
+
+function inferActualResponseFormat(imageUrl) {
+  if (typeof imageUrl !== "string" || !imageUrl) return undefined;
+  return imageUrl.startsWith("data:image/") ? "b64_json" : "url";
+}
 
 function sanitizeEntry(entry) {
   const clean = {};
@@ -18,6 +23,14 @@ function sanitizeEntry(entry) {
   clean.batchId = String(clean.batchId || `legacy_batch_${clean.batchNumber}`);
   clean.batchCreatedAt = typeof clean.batchCreatedAt === "string" ? clean.batchCreatedAt : "";
   clean.status = ["loading", "ready", "error"].includes(clean.status) ? clean.status : "error";
+  clean.generationMode = clean.generationMode === "sync" ? "sync" : "async";
+  clean.responseFormat = clean.responseFormat === "b64_json" ? "b64_json" : "url";
+  clean.actualResponseFormat = ["url", "b64_json"].includes(clean.actualResponseFormat)
+    ? clean.actualResponseFormat
+    : inferActualResponseFormat(clean.imageUrl);
+  clean.imageWidth = Number.isInteger(clean.imageWidth) && clean.imageWidth > 0 ? clean.imageWidth : undefined;
+  clean.imageHeight = Number.isInteger(clean.imageHeight) && clean.imageHeight > 0 ? clean.imageHeight : undefined;
+  clean.favorite = Boolean(clean.favorite);
   return clean;
 }
 
@@ -80,12 +93,12 @@ export function loadApiSettings() {
 
 export function saveApiSettings(settings) {
   const clean = {
-    textBaseUrl: String(settings?.textBaseUrl || "").trim().replace(/\/$/, ""),
+    apiBaseUrl: String(settings?.apiBaseUrl || settings?.textBaseUrl || settings?.imageBaseUrl || "").trim().replace(/\/+$/, ""),
     textApiKey: String(settings?.textApiKey || "").trim(),
     textModel: String(settings?.textModel || "gpt-5.4-mini").trim(),
-    imageBaseUrl: String(settings?.imageBaseUrl || "").trim().replace(/\/$/, ""),
     imageApiKey: String(settings?.imageApiKey || "").trim(),
-    imageModel: String(settings?.imageModel || "gpt-image-2").trim()
+    imageModel: String(settings?.imageModel || "gpt-image-2").trim(),
+    imageGenerationMode: settings?.imageGenerationMode === "sync" ? "sync" : "async"
   };
   return runTransaction("readwrite", (store) => store.put(clean, API_SETTINGS_KEY));
 }
