@@ -72,6 +72,11 @@ function getRequestedAspectRatio(ratio) {
   return width > 0 && height > 0 ? width / height : null;
 }
 
+function getDisplayAspectRatio(entry) {
+  if (entry?.imageWidth > 0 && entry?.imageHeight > 0) return entry.imageWidth / entry.imageHeight;
+  return getRequestedAspectRatio(entry?.ratio) || 4 / 3;
+}
+
 function isImageAspectRatioMatching(entry) {
   const requested = getRequestedAspectRatio(entry?.ratio);
   if (!requested || !entry?.imageWidth || !entry?.imageHeight) return null;
@@ -437,7 +442,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
         </div>
       </div>
       <div class="generation-art ${escapeHtml(entry.artClass)} ${entry.status === "loading" ? "is-loading" : ""}">
-        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span class="generation-image-open-label">查看大图</span></button>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
+        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><span class="generation-image-frame" style="--generation-image-ratio:${getDisplayAspectRatio(entry).toFixed(6)}"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"></span><span class="generation-image-open-label">查看大图</span></button>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
       </div>
       <div class="generation-body">
         <div class="generation-card-summary"><strong>本轮变化</strong><p>${escapeHtml(entry.changeSummary)}</p></div>
