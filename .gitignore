@@ -21,3 +21,13 @@ exports/
 
 server.mjs
 tests/generated-image-delete.mjs
+
+# Local source and collaboration files; GitHub keeps only the display build.
+AGENTS.md
+DESIGN_SYSTEM.md
+UI_STYLE_GUIDE.md
+app.js
+scripts/
+src/
+screenshots/
+vispath/
