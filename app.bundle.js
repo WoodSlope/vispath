@@ -286,10 +286,12 @@ function loadApiSettings() {
 }
 
 function saveApiSettings(settings) {
+  const legacyBaseUrl = String(settings?.apiBaseUrl || "").trim().replace(/\/+$/, "");
   const clean = {
-    apiBaseUrl: String(settings?.apiBaseUrl || settings?.textBaseUrl || settings?.imageBaseUrl || "").trim().replace(/\/+$/, ""),
+    textBaseUrl: String(settings?.textBaseUrl || legacyBaseUrl || "").trim().replace(/\/+$/, ""),
     textApiKey: String(settings?.textApiKey || "").trim(),
     textModel: String(settings?.textModel || "gpt-5.4-mini").trim(),
+    imageBaseUrl: String(settings?.imageBaseUrl || legacyBaseUrl || "").trim().replace(/\/+$/, ""),
     imageApiKey: String(settings?.imageApiKey || "").trim(),
     imageModel: String(settings?.imageModel || "gpt-image-2").trim(),
     imageGenerationMode: settings?.imageGenerationMode === "sync" ? "sync" : "async"
@@ -370,8 +372,8 @@ function renderStarIcon(filled = false) {
 }
 
 function normalizeApiBaseUrl(value) { return String(value || "").trim().replace(/\/+$/, ""); }
-function getTextApiBaseUrl(settings = state.apiSettings) { return normalizeApiBaseUrl(settings?.apiBaseUrl || settings?.textBaseUrl || settings?.imageBaseUrl); }
-function getImageApiBaseUrl(settings = state.apiSettings) { return normalizeApiBaseUrl(settings?.apiBaseUrl || settings?.imageBaseUrl || settings?.textBaseUrl); }
+function getTextApiBaseUrl(settings = state.apiSettings) { return normalizeApiBaseUrl(settings?.textBaseUrl || settings?.apiBaseUrl); }
+function getImageApiBaseUrl(settings = state.apiSettings) { return normalizeApiBaseUrl(settings?.imageBaseUrl || settings?.apiBaseUrl); }
 function hasBrowserTextApi() { return Boolean(state.apiSettings?.textApiKey && getTextApiBaseUrl()); }
 function hasBrowserImageApi() { return Boolean(state.apiSettings?.imageApiKey && getImageApiBaseUrl()); }
 
@@ -409,9 +411,10 @@ function createImageDownloadName(entry) {
 }
 
 function fillApiSettingsForm(settings = {}) {
-  $("apiBaseUrlInput").value = settings.apiBaseUrl || settings.textBaseUrl || settings.imageBaseUrl || "";
+  $("textBaseUrlInput").value = settings.textBaseUrl || settings.apiBaseUrl || "";
   $("textApiKeyInput").value = settings.textApiKey || "";
   $("textModelInput").value = settings.textModel || "gpt-5.4-mini";
+  $("imageBaseUrlInput").value = settings.imageBaseUrl || settings.apiBaseUrl || "";
   $("imageApiKeyInput").value = settings.imageApiKey || "";
   $("imageModelInput").value = settings.imageModel || "gpt-image-2";
   $("imageGenerationModeInput").value = settings.imageGenerationMode === "sync" ? "sync" : "async";
@@ -419,9 +422,10 @@ function fillApiSettingsForm(settings = {}) {
 
 function readApiSettingsForm() {
   return {
-    apiBaseUrl: $("apiBaseUrlInput").value,
+    textBaseUrl: $("textBaseUrlInput").value,
     textApiKey: $("textApiKeyInput").value,
     textModel: $("textModelInput").value,
+    imageBaseUrl: $("imageBaseUrlInput").value,
     imageApiKey: $("imageApiKeyInput").value,
     imageModel: $("imageModelInput").value,
     imageGenerationMode: $("imageGenerationModeInput").value
@@ -749,7 +753,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
         </div>
       </div>
       <div class="generation-art ${escapeHtml(entry.artClass)} ${entry.status === "loading" ? "is-loading" : ""}">
-        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span>查看大图</span></button>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
+        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span class="generation-image-open-label">查看大图</span></button>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
       </div>
       <div class="generation-body">
         <div class="generation-card-summary"><strong>本轮变化</strong><p>${escapeHtml(entry.changeSummary)}</p></div>
@@ -1495,29 +1499,38 @@ async function loadSavedApiSettings() {
   fillApiSettingsForm(state.apiSettings || {});
 }
 
-function clearApiBaseUrlError() {
-  $("apiBaseUrlInput").removeAttribute("aria-invalid");
-  $("apiBaseUrlError").classList.add("hidden");
+function clearApiBaseUrlError(kind) {
+  $(`${kind}BaseUrlInput`).removeAttribute("aria-invalid");
+  $(`${kind}BaseUrlError`).classList.add("hidden");
 }
 
-function showApiBaseUrlError() {
-  $("apiBaseUrlInput").setAttribute("aria-invalid", "true");
-  $("apiBaseUrlError").classList.remove("hidden");
-  $("apiBaseUrlInput").focus();
+function clearApiBaseUrlErrors() {
+  clearApiBaseUrlError("text");
+  clearApiBaseUrlError("image");
+}
+
+function showApiBaseUrlError(kind, focus = true) {
+  $(`${kind}BaseUrlInput`).setAttribute("aria-invalid", "true");
+  $(`${kind}BaseUrlError`).classList.remove("hidden");
+  if (focus) $(`${kind}BaseUrlInput`).focus();
 }
 
 async function saveBrowserApiSettings() {
   const nextSettings = readApiSettingsForm();
-  const previousSettings = state.apiSettings || {};
-  if (!nextSettings.apiBaseUrl && (nextSettings.textApiKey || nextSettings.imageApiKey)) {
-    nextSettings.apiBaseUrl = previousSettings.apiBaseUrl || previousSettings.textBaseUrl || previousSettings.imageBaseUrl || "";
+  clearApiBaseUrlErrors();
+  let invalid = false;
+  if (nextSettings.textApiKey && !nextSettings.textBaseUrl) {
+    showApiBaseUrlError("text");
+    invalid = true;
   }
-  if ((nextSettings.textApiKey || nextSettings.imageApiKey) && !nextSettings.apiBaseUrl) {
-    showApiBaseUrlError();
-    showToast("请填写 API 根地址");
+  if (nextSettings.imageApiKey && !nextSettings.imageBaseUrl) {
+    showApiBaseUrlError("image", !invalid);
+    invalid = true;
+  }
+  if (invalid) {
+    showToast("请补充对应服务的 API 地址");
     return;
   }
-  clearApiBaseUrlError();
   state.apiSettings = nextSettings;
   await saveApiSettings(state.apiSettings);
   apiSettingsDialog.close();
@@ -1589,8 +1602,9 @@ $("generateBtn").addEventListener("click", generateDirections);
 $("submitSelectedBtn").addEventListener("click", submitSelected);
 $("selectAllBtn").addEventListener("click", selectAllPrompts);
 $("resetBtn").addEventListener("click", openResetDialog);
-$("apiSettingsBtn").addEventListener("click", () => { fillApiSettingsForm(state.apiSettings || {}); clearApiBaseUrlError(); showDialogAtTop(apiSettingsDialog); });
-$("apiBaseUrlInput").addEventListener("input", clearApiBaseUrlError);
+$("apiSettingsBtn").addEventListener("click", () => { fillApiSettingsForm(state.apiSettings || {}); clearApiBaseUrlErrors(); showDialogAtTop(apiSettingsDialog); });
+$("textBaseUrlInput").addEventListener("input", () => clearApiBaseUrlError("text"));
+$("imageBaseUrlInput").addEventListener("input", () => clearApiBaseUrlError("image"));
 $("saveApiSettingsBtn").addEventListener("click", saveBrowserApiSettings);
 $("clearApiSettingsBtn").addEventListener("click", openClearApiSettingsDialog);
 $("cancelClearApiSettingsBtn").addEventListener("click", cancelClearApiSettings);

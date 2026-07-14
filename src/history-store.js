@@ -92,10 +92,12 @@ export function loadApiSettings() {
 }
 
 export function saveApiSettings(settings) {
+  const legacyBaseUrl = String(settings?.apiBaseUrl || "").trim().replace(/\/+$/, "");
   const clean = {
-    apiBaseUrl: String(settings?.apiBaseUrl || settings?.textBaseUrl || settings?.imageBaseUrl || "").trim().replace(/\/+$/, ""),
+    textBaseUrl: String(settings?.textBaseUrl || legacyBaseUrl || "").trim().replace(/\/+$/, ""),
     textApiKey: String(settings?.textApiKey || "").trim(),
     textModel: String(settings?.textModel || "gpt-5.4-mini").trim(),
+    imageBaseUrl: String(settings?.imageBaseUrl || legacyBaseUrl || "").trim().replace(/\/+$/, ""),
     imageApiKey: String(settings?.imageApiKey || "").trim(),
     imageModel: String(settings?.imageModel || "gpt-image-2").trim(),
     imageGenerationMode: settings?.imageGenerationMode === "sync" ? "sync" : "async"

@@ -216,20 +216,21 @@
         <div class="title-pair dialog-title">
           <span class="step-label">BROWSER API MODE</span>
           <h2 id="apiSettingsTitle">API 配置</h2>
+          <small class="dialog-meta" id="apiSettingsStorageNote">仅保存在当前浏览器</small>
         </div>
         <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭 API 配置" title="关闭 API 配置"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <div class="confirm-dialog-content">
-        <p>配置保存在当前浏览器的 IndexedDB 中，不会写入 GitHub Pages 文件。浏览器直连还需要中转站允许 CORS。</p>
-        <label class="form-field api-root-field" for="apiBaseUrlInput"><span>API 根地址</span><input id="apiBaseUrlInput" type="url" placeholder="https://api.aixoras.com/v1" aria-describedby="apiBaseUrlHint apiBaseUrlError"><small id="apiBaseUrlHint">只填写到 /v1，具体接口后缀由程序自动添加。</small><small class="field-error hidden" id="apiBaseUrlError" role="alert">填写 API Key 时必须同时填写 API 根地址。</small></label>
         <div class="api-settings-grid">
         <section class="api-provider-group" aria-labelledby="textApiGroupTitle">
           <h3 id="textApiGroupTitle">文本 API</h3>
+          <label class="form-field" for="textBaseUrlInput"><span>API 地址</span><input id="textBaseUrlInput" type="url" placeholder="https://text-api.example/v1" aria-describedby="textBaseUrlHint textBaseUrlError"><small id="textBaseUrlHint">填写到 /v1</small><small class="field-error hidden" id="textBaseUrlError" role="alert">填写文本 API Key 时必须同时填写地址。</small></label>
           <label class="form-field" for="textApiKeyInput"><span>API Key</span><input id="textApiKeyInput" type="password" autocomplete="off"></label>
           <label class="form-field" for="textModelInput"><span>模型</span><input id="textModelInput" type="text" value="gpt-5.4-mini"></label>
         </section>
         <section class="api-provider-group" aria-labelledby="imageApiGroupTitle">
           <h3 id="imageApiGroupTitle">生图 API</h3>
+          <label class="form-field" for="imageBaseUrlInput"><span>API 地址</span><input id="imageBaseUrlInput" type="url" placeholder="https://image-api.example/v1" aria-describedby="imageBaseUrlHint imageBaseUrlError"><small id="imageBaseUrlHint">填写到 /v1</small><small class="field-error hidden" id="imageBaseUrlError" role="alert">填写生图 API Key 时必须同时填写地址。</small></label>
           <label class="form-field" for="imageApiKeyInput"><span>API Key</span><input id="imageApiKeyInput" type="password" autocomplete="off"></label>
           <label class="form-field" for="imageModelInput"><span>模型</span><input id="imageModelInput" type="text" value="gpt-image-2"></label>
           <label class="form-field" for="imageGenerationModeInput"><span>生成方式</span><span class="select-control"><select id="imageGenerationModeInput"><option value="async" selected>异步图片生成 · 推荐</option><option value="sync">同步图片生成</option></select></span></label>
@@ -243,6 +244,7 @@
           <div><dt>异步图片</dt><dd><code>/images/generations/async</code> · 返回 task_id</dd></div>
           <div><dt>任务查询</dt><dd><code>/images/tasks/{task_id}</code> · 自动轮询</dd></div>
           <div><dt>图片格式</dt><dd>请求 URL · 自动兼容 URL / Base64，以实际响应为准</dd></div>
+          <div><dt>连接要求</dt><dd>中转站需允许浏览器 CORS 请求</dd></div>
         </dl>
         </details>
         <div class="brand-attribution" aria-label="项目归属与版权">
@@ -267,7 +269,7 @@
         <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭清除 API 配置确认" title="关闭清除 API 配置确认"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <div class="confirm-dialog-content">
-        <p id="clearApiSettingsDialogDescription">当前浏览器中保存的 API 根地址、文本 API Key、生图 API Key 和模型配置都会被清除。此操作无法撤销。</p>
+        <p id="clearApiSettingsDialogDescription">当前浏览器中保存的文本和生图 API 地址、API Key、模型及生成方式都会被清除。此操作无法撤销。</p>
       </div>
       <div class="confirm-dialog-actions">
         <button class="button" id="cancelClearApiSettingsBtn" type="button">取消</button>
@@ -352,7 +354,7 @@
   <dialog class="image-preview-dialog" id="imagePreviewDialog" aria-labelledby="imagePreviewTitle">
     <div class="image-preview-shell">
       <div class="image-preview-head">
-        <div><span class="step-label">IMAGE PREVIEW</span><h2 id="imagePreviewTitle">生成图片预览</h2><small id="imagePreviewMeta"></small></div>
+        <span class="step-label">IMAGE PREVIEW</span><h2 id="imagePreviewTitle">生成图片预览</h2><small id="imagePreviewMeta"></small>
         <div class="image-preview-actions">
           <a class="button button-quiet" id="imageDownloadLink" href="" download>下载原图</a>
           <button class="icon-button dialog-close" id="closeImagePreviewBtn" type="button" data-dialog-close aria-label="关闭大图预览" title="关闭大图预览"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -365,8 +367,8 @@
   <dialog class="comparison-dialog" id="comparisonDialog" aria-labelledby="comparisonTitle">
     <div class="comparison-shell">
       <div class="image-preview-head">
-        <div><span class="step-label">BATCH COMPARISON</span><h2 id="comparisonTitle">批次对比</h2><small id="comparisonMeta"></small></div>
-        <button class="icon-button dialog-close" id="closeComparisonBtn" type="button" data-dialog-close aria-label="关闭批次对比" title="关闭批次对比"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <span class="step-label">BATCH COMPARISON</span><h2 id="comparisonTitle">批次对比</h2><small id="comparisonMeta"></small>
+        <div class="image-preview-actions"><button class="icon-button dialog-close" id="closeComparisonBtn" type="button" data-dialog-close aria-label="关闭批次对比" title="关闭批次对比"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
       </div>
       <div class="comparison-grid" id="comparisonGrid"></div>
     </div>
