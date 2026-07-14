@@ -22,6 +22,8 @@ const stageButtons = [...document.querySelectorAll(".stage-nav [data-stage-targe
 const blueprintSection = document.querySelector(".inline-blueprint");
 const blueprintToggle = $("toggleBlueprintBtn");
 const apiSettingsDialog = $("apiSettingsDialog");
+const clearApiSettingsDialog = $("clearApiSettingsDialog");
+const resetDialog = $("resetDialog");
 const historyDialog = $("historyDialog");
 const retryGenerationDialog = $("retryGenerationDialog");
 const imagePreviewDialog = $("imagePreviewDialog");
@@ -63,16 +65,6 @@ function resolveImageModel(settings, resolution) {
   const configuredModel = String(settings?.imageModel || "gpt-image-2").trim();
   if (!/^gpt-image-2(?:-(?:1k|2k|4k))?$/.test(configuredModel)) return configuredModel;
   return `gpt-image-2-${String(resolution || "1K").toLowerCase()}`;
-}
-
-function resolveDisplayAspectRatio(ratio) {
-  return {
-    "1:1": "1 / 1",
-    "3:4": "3 / 4",
-    "4:3": "4 / 3",
-    "16:9": "16 / 9",
-    "9:16": "9 / 16"
-  }[ratio] || "4 / 3";
 }
 
 function getRequestedAspectRatio(ratio) {
@@ -259,7 +251,7 @@ function applyLocalPromptPreview() {
   renderBlueprint(state.blueprint);
   renderPromptCards();
   $("boardHint").textContent = "本地预览 · 示例方案不会调用 API 或写入历史";
-  goToStage("promptStage");
+  goToStage("promptStage", { resetScroll: true });
   return true;
 }
 
@@ -275,13 +267,33 @@ function setActiveStage(stageId) {
   });
 }
 
-function goToStage(stageId) {
+function resetStageScroll(stageId) {
+  const stage = document.getElementById(stageId);
+  stage?.querySelectorAll(".form-stack, .inline-blueprint, .prompt-scroll-region, .result-scroll-region").forEach((node) => {
+    node.scrollTop = 0;
+    node.scrollLeft = 0;
+  });
+}
+
+function goToStage(stageId, { resetScroll = false } = {}) {
   setActiveStage(stageId);
+  if (resetScroll) resetStageScroll(stageId);
   if (window.matchMedia("(min-width: 901px)").matches) {
-    document.getElementById(stageId)?.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
   document.getElementById(stageId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function resetDialogScroll(dialog) {
+  dialog?.querySelectorAll(".confirm-dialog-content, .image-preview-stage, .comparison-grid").forEach((node) => {
+    node.scrollTop = 0;
+    node.scrollLeft = 0;
+  });
+}
+
+function showDialogAtTop(dialog) {
+  dialog.showModal();
+  resetDialogScroll(dialog);
 }
 
 function updateActiveStageFromScroll() {
@@ -407,12 +419,12 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
     <details class="generation-batch" data-batch-id="${escapeHtml(batch.id)}" ${openBatchId ? batch.id === openBatchId ? "open" : "" : hasVisibleOpenBatch ? openBatchIds.has(batch.id) ? "open" : "" : batchIndex === 0 ? "open" : ""}>
       <summary class="generation-batch-summary">
         <span><strong>批次 ${escapeHtml(batch.number)}</strong><small>${escapeHtml(formatBatchTime(batch.createdAt))} · ${batch.entries.length} 条结果<span class="generation-batch-stats">${statusSummary}</span></small></span>
-        <span class="generation-batch-meta">
-          <button class="button button-quiet generation-batch-compare" type="button" data-action="compare-batch" aria-label="对比批次 ${escapeHtml(batch.number)} 的完成结果" title="${comparableEntries.length >= 2 ? `对比 ${comparableEntries.length} 条完成结果` : "至少需要两条完成图片"}" ${comparableEntries.length < 2 ? "disabled" : ""}>对比</button>
-          <button class="icon-button generation-batch-delete" type="button" data-action="delete-batch" aria-label="删除批次 ${escapeHtml(batch.number)}，共 ${batch.entries.length} 条结果" title="${counts.loading ? "生成中的批次暂不能删除" : `删除整个批次，共 ${batch.entries.length} 条结果`}" ${counts.loading ? "disabled" : ""}>${renderCloseIcon()}</button>
-        </span>
       </summary>
-      <div class="generation-batch-grid${batch.entries.length === 1 ? " is-single" : ""}">
+      <div class="generation-batch-meta">
+        <button class="button button-quiet generation-batch-compare" type="button" data-action="compare-batch" aria-label="对比批次 ${escapeHtml(batch.number)} 的完成结果" title="${comparableEntries.length >= 2 ? `对比 ${comparableEntries.length} 条完成结果` : "至少需要两条完成图片"}" ${comparableEntries.length < 2 ? "disabled" : ""}>对比</button>
+        <button class="icon-button generation-batch-delete" type="button" data-action="delete-batch" aria-label="删除批次 ${escapeHtml(batch.number)}，共 ${batch.entries.length} 条结果" title="${counts.loading ? "生成中的批次暂不能删除" : `删除整个批次，共 ${batch.entries.length} 条结果`}" ${counts.loading ? "disabled" : ""}>${renderCloseIcon()}</button>
+      </div>
+      <div class="generation-batch-grid">
         ${batch.entries.map((entry) => `
     <article class="generation-card" data-generation-id="${escapeHtml(entry.id)}">
       <div class="generation-card-head">
@@ -422,7 +434,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
           <button class="icon-button generation-delete" type="button" data-action="delete" aria-label="删除${escapeHtml(entry.variantTitle)}记录" title="${entry.status === "loading" ? "生成中暂不能删除" : "删除这条记录"}" ${entry.status === "loading" ? "disabled" : ""}>${renderCloseIcon()}</button>
         </div>
       </div>
-      <div class="generation-art ${escapeHtml(entry.artClass)} ${entry.status === "loading" ? "is-loading" : ""}" style="--generation-aspect-ratio: ${resolveDisplayAspectRatio(entry.ratio)}">
+      <div class="generation-art ${escapeHtml(entry.artClass)} ${entry.status === "loading" ? "is-loading" : ""}">
         ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span>查看大图</span></button>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
       </div>
       <div class="generation-body">
@@ -436,7 +448,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
           <div class="prompt-preview">${escapeHtml(entry.promptSnapshot)}</div>
         </details>
         <div class="generation-actions">
-          <button class="button button-primary" type="button" data-action="continue">基于此结果细化</button>
+          ${entry.status === "ready" ? `<button class="button button-primary" type="button" data-action="continue">基于此结果细化</button>` : ""}
           <button class="button" type="button" data-action="copy-generation">复制提示词</button>
           <button class="button" type="button" data-action="retry" ${entry.status === "loading" ? "disabled" : ""}>${entry.status === "loading" ? "生成中" : entry.status === "error" ? "重试" : "重新生成"}</button>
         </div>
@@ -650,7 +662,7 @@ async function recordGeneratedImageDimensions(image) {
 
 function openRetryGenerationDialog(entry) {
   pendingRetryEntryId = entry.id;
-  retryGenerationDialog.showModal();
+  showDialogAtTop(retryGenerationDialog);
   $("cancelRetryGenerationBtn").focus();
 }
 
@@ -667,7 +679,7 @@ function openImagePreview(entry) {
   $("imagePreviewImage").alt = `${entry.variantTitle || "生成结果"}大图预览`;
   $("imageDownloadLink").href = entry.imageUrl;
   $("imageDownloadLink").download = createImageDownloadName(entry);
-  imagePreviewDialog.showModal();
+  showDialogAtTop(imagePreviewDialog);
   $("closeImagePreviewBtn").focus();
 }
 
@@ -682,7 +694,7 @@ function openBatchComparison(batchId) {
   $("comparisonMeta").textContent = `${entries.length} 条完成结果 · 点击图片可查看大图`;
   $("comparisonGrid").innerHTML = entries.map((entry) => `
     <article class="comparison-item${entry.favorite ? " is-favorite" : ""}" data-comparison-id="${escapeHtml(entry.id)}">
-      <button class="comparison-image" type="button" data-action="open-comparison-image" style="--generation-aspect-ratio: ${resolveDisplayAspectRatio(entry.ratio)}" aria-label="查看${escapeHtml(entry.variantTitle)}大图">
+      <button class="comparison-image" type="button" data-action="open-comparison-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图">
         <img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}对比图">
       </button>
       <div class="comparison-caption">
@@ -691,7 +703,7 @@ function openBatchComparison(batchId) {
       </div>
     </article>
   `).join("");
-  comparisonDialog.showModal();
+  showDialogAtTop(comparisonDialog);
   $("closeComparisonBtn").focus();
 }
 
@@ -792,7 +804,7 @@ async function restoreGenerationHistory() {
     if (saved && (saved.migrated || interruptedCount || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
     if (state.generationEntries.length) {
       $("feedHint").textContent = `已恢复 ${state.generationEntries.length} 条 · ${groupGenerationEntries().length} 个批次 · 当前浏览器`;
-      if (window.matchMedia("(min-width: 901px)").matches) goToStage("resultStage");
+      if (window.matchMedia("(min-width: 901px)").matches) goToStage("resultStage", { resetScroll: true });
       showToast(interruptedCount ? `已恢复记录，其中 ${interruptedCount} 条需核对账单` : `已恢复 ${state.generationEntries.length} 条生成记录`);
     }
     resumePendingImageCleanup();
@@ -849,7 +861,7 @@ async function openHistoryDialog() {
     if (estimate?.usage) $("historyStorageEstimate").textContent = formatStorageEstimate(estimate.usage);
   }
   syncHistoryCleanupState(keepCount);
-  historyDialog.showModal();
+  showDialogAtTop(historyDialog);
 }
 
 function syncHistoryCleanupState(keepCount = Number($("historyKeepCount").value)) {
@@ -916,7 +928,7 @@ async function generateDirections() {
     renderPromptCards();
     $("generateBtnLabel").textContent = "重新生成方向";
     $("generateHint").textContent = "已生成方案。请在中间选择一套或多套，再统一提交到右侧。";
-    goToStage("promptStage");
+    goToStage("promptStage", { resetScroll: true });
     showToast("已生成 AI 提示词方案");
   } catch (error) {
     $("generateBtnLabel").textContent = state.blueprint ? "重新生成方向" : "重试生成方向";
@@ -992,7 +1004,7 @@ function submitSelected() {
   renderPromptCards();
   renderGenerationFeed({ openBatchId: batchId });
   persistGenerationHistory();
-  goToStage("resultStage");
+  goToStage("resultStage", { resetScroll: true });
   showToast(`已提交 ${entries.length} 套，后台生成中；可继续创建或提交其他方案`);
   enqueueGenerationEntries(entries);
 }
@@ -1090,7 +1102,7 @@ function handleGenerationAction(event) {
     state.selectedVariantIds.clear();
     renderBlueprintEmpty();
     renderPromptCards();
-    goToStage("setupStage");
+    goToStage("setupStage", { resetScroll: true });
     showToast(`已继承“${entry.variantTitle}”，请设置下一轮探索`);
     return;
   }
@@ -1156,7 +1168,7 @@ function removeReferenceImage() {
 }
 
 function openResetDialog() {
-  $("resetDialog").showModal();
+  showDialogAtTop(resetDialog);
   $("cancelResetBtn").focus();
 }
 
@@ -1169,6 +1181,17 @@ async function loadSavedApiSettings() {
   fillApiSettingsForm(state.apiSettings || {});
 }
 
+function clearApiBaseUrlError() {
+  $("apiBaseUrlInput").removeAttribute("aria-invalid");
+  $("apiBaseUrlError").classList.add("hidden");
+}
+
+function showApiBaseUrlError() {
+  $("apiBaseUrlInput").setAttribute("aria-invalid", "true");
+  $("apiBaseUrlError").classList.remove("hidden");
+  $("apiBaseUrlInput").focus();
+}
+
 async function saveBrowserApiSettings() {
   const nextSettings = readApiSettingsForm();
   const previousSettings = state.apiSettings || {};
@@ -1176,9 +1199,11 @@ async function saveBrowserApiSettings() {
     nextSettings.apiBaseUrl = previousSettings.apiBaseUrl || previousSettings.textBaseUrl || previousSettings.imageBaseUrl || "";
   }
   if ((nextSettings.textApiKey || nextSettings.imageApiKey) && !nextSettings.apiBaseUrl) {
+    showApiBaseUrlError();
     showToast("请填写 API 根地址");
     return;
   }
+  clearApiBaseUrlError();
   state.apiSettings = nextSettings;
   await saveApiSettings(state.apiSettings);
   apiSettingsDialog.close();
@@ -1186,7 +1211,20 @@ async function saveBrowserApiSettings() {
   showToast("浏览器 API 配置已保存");
 }
 
+function openClearApiSettingsDialog() {
+  apiSettingsDialog.close();
+  showDialogAtTop(clearApiSettingsDialog);
+  $("cancelClearApiSettingsBtn").focus();
+}
+
+function cancelClearApiSettings() {
+  clearApiSettingsDialog.close();
+  showDialogAtTop(apiSettingsDialog);
+  $("clearApiSettingsBtn").focus();
+}
+
 async function clearBrowserApiSettings() {
+  clearApiSettingsDialog.close();
   await clearApiSettings();
   state.apiSettings = null;
   fillApiSettingsForm({});
@@ -1222,7 +1260,7 @@ async function reset() {
   }
   $("generateBtnLabel").textContent = "生成视觉方向";
   $("generateHint").textContent = "输入提示词或上传参考图后，生成可比较的方向方案。";
-  goToStage("setupStage");
+  goToStage("setupStage", { resetScroll: true });
   closeResetDialog();
   showToast("已重置工作台");
 }
@@ -1237,9 +1275,12 @@ $("generateBtn").addEventListener("click", generateDirections);
 $("submitSelectedBtn").addEventListener("click", submitSelected);
 $("selectAllBtn").addEventListener("click", selectAllPrompts);
 $("resetBtn").addEventListener("click", openResetDialog);
-$("apiSettingsBtn").addEventListener("click", () => { fillApiSettingsForm(state.apiSettings || {}); apiSettingsDialog.showModal(); });
+$("apiSettingsBtn").addEventListener("click", () => { fillApiSettingsForm(state.apiSettings || {}); clearApiBaseUrlError(); showDialogAtTop(apiSettingsDialog); });
+$("apiBaseUrlInput").addEventListener("input", clearApiBaseUrlError);
 $("saveApiSettingsBtn").addEventListener("click", saveBrowserApiSettings);
-$("clearApiSettingsBtn").addEventListener("click", clearBrowserApiSettings);
+$("clearApiSettingsBtn").addEventListener("click", openClearApiSettingsDialog);
+$("cancelClearApiSettingsBtn").addEventListener("click", cancelClearApiSettings);
+$("confirmClearApiSettingsBtn").addEventListener("click", clearBrowserApiSettings);
 $("historyManageBtn").addEventListener("click", openHistoryDialog);
 $("historyKeepCount").addEventListener("change", (event) => syncHistoryCleanupState(Number(event.target.value)));
 $("cleanupHistoryBtn").addEventListener("click", cleanupOldHistory);
@@ -1250,6 +1291,7 @@ document.querySelectorAll("[data-dialog-close]").forEach((button) => {
   button.addEventListener("click", () => {
     const dialog = button.closest("dialog");
     if (dialog === retryGenerationDialog) closeRetryGenerationDialog();
+    else if (dialog === clearApiSettingsDialog) cancelClearApiSettings();
     else dialog?.close();
   });
 });

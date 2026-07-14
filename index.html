@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="VisPath 是面向视觉创作者的本地 AI 视觉方向工作台。">
+  <meta name="application-name" content="VisPath">
+  <meta name="author" content="LINPO LAB">
+  <meta name="copyright" content="© 2026 LINPO LAB. All rights reserved.">
   <title>VisPath · 视觉路径</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
@@ -13,7 +17,7 @@
       <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <span>
         <strong>VisPath · 视觉路径</strong>
-        <small>Visual direction board</small>
+        <small>LINPO LAB · © 2026</small>
       </span>
     </a>
     <nav class="stage-nav" aria-label="工作阶段">
@@ -32,7 +36,8 @@
     <span class="brand-mark desktop-required-mark" aria-hidden="true"><i></i><i></i><i></i></span>
     <p>VisPath · 视觉路径</p>
     <h1 id="desktopRequiredTitle">当前版本仅支持电脑端使用</h1>
-    <span>请使用宽度大于 900px 的浏览器访问。</span>
+    <span class="desktop-required-copy">请使用宽度大于 900px 的浏览器访问。</span>
+    <span class="desktop-required-owner">VisPath · LINPO LAB · © 2026</span>
   </section>
 
   <main id="top" class="app-shell">
@@ -149,11 +154,13 @@
             <button class="button button-quiet" id="selectAllBtn" type="button" disabled>全选</button>
           </div>
           <p class="panel-helper" id="boardHint">生成后选择需要提交的提示词方案。</p>
-          <div class="empty-board compact-empty" id="emptyBoard">
-            <div class="state-marker" aria-hidden="true">+</div>
-            <div class="state-copy"><h3>等待提示词方案</h3><p>从左侧建立一次探索，这里会出现可选择、编辑和复制的提示词卡片。</p></div>
+          <div class="prompt-scroll-region">
+            <div class="empty-board compact-empty" id="emptyBoard">
+              <div class="state-marker" aria-hidden="true">+</div>
+              <div class="state-copy"><h3>等待提示词方案</h3><p>从左侧建立一次探索，这里会出现可选择、编辑和复制的提示词卡片。</p></div>
+            </div>
+            <div class="prompt-list" id="variantGrid"></div>
           </div>
-          <div class="prompt-list" id="variantGrid"></div>
           <div class="submission-bar">
             <span>已选择 <strong id="selectedCount">0</strong> 套</span>
             <button class="button button-primary" id="submitSelectedBtn" type="button" disabled>提交生成</button>
@@ -188,15 +195,17 @@
           </div>
         </div>
 
-        <div class="empty-board" id="emptyGenerationBoard">
-          <div class="state-marker" aria-hidden="true">+</div>
-          <div class="state-copy"><h3>还没有生成记录</h3><p>在中间选择提示词方案并提交，任务和结果会按时间进入这里。</p></div>
+        <div class="result-scroll-region">
+          <div class="empty-board" id="emptyGenerationBoard">
+            <div class="state-marker" aria-hidden="true">+</div>
+            <div class="state-copy"><h3>还没有生成记录</h3><p>在中间选择提示词方案并提交，任务和结果会按时间进入这里。</p></div>
+          </div>
+          <div class="empty-board compact-empty hidden" id="filteredGenerationEmpty">
+            <div class="state-marker" aria-hidden="true">+</div>
+            <div class="state-copy"><h3>没有匹配的生成结果</h3><p>调整搜索词或筛选条件，或者清除筛选查看全部历史。</p></div>
+          </div>
+          <div class="generation-feed" id="generationFeed"></div>
         </div>
-        <div class="empty-board compact-empty hidden" id="filteredGenerationEmpty">
-          <div class="state-marker" aria-hidden="true">+</div>
-          <div class="state-copy"><h3>没有匹配的生成结果</h3><p>调整搜索词或筛选条件，或者清除筛选查看全部历史。</p></div>
-        </div>
-        <div class="generation-feed" id="generationFeed"></div>
       </section>
     </section>
   </main>
@@ -210,9 +219,10 @@
         </div>
         <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭 API 配置" title="关闭 API 配置"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
-      <p>配置保存在当前浏览器的 IndexedDB 中，不会写入 GitHub Pages 文件。浏览器直连还需要中转站允许 CORS。</p>
-      <label class="form-field api-root-field" for="apiBaseUrlInput"><span>API 根地址</span><input id="apiBaseUrlInput" type="url" placeholder="https://api.aixoras.com/v1"><small>只填写到 /v1，具体接口后缀由程序自动添加。</small></label>
-      <div class="api-settings-grid">
+      <div class="confirm-dialog-content">
+        <p>配置保存在当前浏览器的 IndexedDB 中，不会写入 GitHub Pages 文件。浏览器直连还需要中转站允许 CORS。</p>
+        <label class="form-field api-root-field" for="apiBaseUrlInput"><span>API 根地址</span><input id="apiBaseUrlInput" type="url" placeholder="https://api.aixoras.com/v1" aria-describedby="apiBaseUrlHint apiBaseUrlError"><small id="apiBaseUrlHint">只填写到 /v1，具体接口后缀由程序自动添加。</small><small class="field-error hidden" id="apiBaseUrlError" role="alert">填写 API Key 时必须同时填写 API 根地址。</small></label>
+        <div class="api-settings-grid">
         <section class="api-provider-group" aria-labelledby="textApiGroupTitle">
           <h3 id="textApiGroupTitle">文本 API</h3>
           <label class="form-field" for="textApiKeyInput"><span>API Key</span><input id="textApiKeyInput" type="password" autocomplete="off"></label>
@@ -224,8 +234,8 @@
           <label class="form-field" for="imageModelInput"><span>模型</span><input id="imageModelInput" type="text" value="gpt-image-2"></label>
           <label class="form-field" for="imageGenerationModeInput"><span>生成方式</span><span class="select-control"><select id="imageGenerationModeInput"><option value="async" selected>异步图片生成 · 推荐</option><option value="sync">同步图片生成</option></select></span></label>
         </section>
-      </div>
-      <details class="api-protocol-summary" id="apiProtocolSummary">
+        </div>
+        <details class="api-protocol-summary" id="apiProtocolSummary">
         <summary><strong>固定接口规则</strong><span>· Responses · 同步 / 异步 · 自动查询</span></summary>
         <dl>
           <div><dt>文字协议</dt><dd>Responses · 非流式 · <code>/responses</code></dd></div>
@@ -234,10 +244,34 @@
           <div><dt>任务查询</dt><dd><code>/images/tasks/{task_id}</code> · 自动轮询</dd></div>
           <div><dt>图片格式</dt><dd>请求 URL · 自动兼容 URL / Base64，以实际响应为准</dd></div>
         </dl>
-      </details>
+        </details>
+        <div class="brand-attribution" aria-label="项目归属与版权">
+          <strong>VisPath · LINPO LAB</strong>
+          <span>© 2026 LINPO LAB. All rights reserved.</span>
+        </div>
+      </div>
       <div class="confirm-dialog-actions">
         <button class="button" id="clearApiSettingsBtn" type="button">清除配置</button>
         <button class="button button-primary" id="saveApiSettingsBtn" type="button">保存配置</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="confirm-dialog" id="clearApiSettingsDialog" aria-labelledby="clearApiSettingsDialogTitle" aria-describedby="clearApiSettingsDialogDescription">
+    <div class="confirm-dialog-body">
+      <div class="confirm-dialog-head">
+        <div class="title-pair dialog-title">
+          <span class="step-label">CLEAR API SETTINGS</span>
+          <h2 id="clearApiSettingsDialogTitle">确认清除 API 配置？</h2>
+        </div>
+        <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭清除 API 配置确认" title="关闭清除 API 配置确认"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="confirm-dialog-content">
+        <p id="clearApiSettingsDialogDescription">当前浏览器中保存的 API 根地址、文本 API Key、生图 API Key 和模型配置都会被清除。此操作无法撤销。</p>
+      </div>
+      <div class="confirm-dialog-actions">
+        <button class="button" id="cancelClearApiSettingsBtn" type="button">取消</button>
+        <button class="button button-danger" id="confirmClearApiSettingsBtn" type="button">确认清除</button>
       </div>
     </div>
   </dialog>
@@ -251,7 +285,9 @@
         </div>
         <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭重置确认" title="关闭重置确认"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
-      <p id="resetDialogDescription">当前输入、提示词方案和本地生成历史都会被清空，操作后无法恢复。</p>
+      <div class="confirm-dialog-content">
+        <p id="resetDialogDescription">当前输入、提示词方案和本地生成历史都会被清空，操作后无法恢复。</p>
+      </div>
       <div class="confirm-dialog-actions">
         <button class="button" id="cancelResetBtn" type="button">取消</button>
         <button class="button button-danger" id="confirmResetBtn" type="button">确认重置</button>
@@ -268,14 +304,15 @@
         </div>
         <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭历史管理" title="关闭历史管理"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
-      <p>生成记录保存在当前浏览器中。清理旧记录不会影响当前输入和 API 配置。</p>
-      <div class="history-stats" aria-label="本地历史统计">
+      <div class="confirm-dialog-content">
+        <p>生成记录保存在当前浏览器中。清理旧记录不会影响当前输入和 API 配置。</p>
+        <div class="history-stats" aria-label="本地历史统计">
         <div><strong id="historyEntryCount">0</strong><span>条结果</span></div>
         <div><strong id="historyBatchCount">0</strong><span>个批次</span></div>
         <div><strong id="historyImageCount">0</strong><span>条带图片</span></div>
         <div><strong id="historyStorageEstimate">--</strong><span>浏览器占用</span></div>
-      </div>
-      <div class="form-field history-retention">
+        </div>
+        <div class="form-field history-retention">
         <label for="historyKeepCount">清理范围</label>
         <span class="select-control"><select id="historyKeepCount">
           <option value="20">保留最近 20 条</option>
@@ -284,6 +321,7 @@
           <option value="0">全部清空</option>
         </select></span>
         <p class="field-helper history-cleanup-hint" id="historyCleanupHint">当前没有需要清理的旧记录。</p>
+        </div>
       </div>
       <div class="confirm-dialog-actions">
         <button class="button" id="cancelHistoryBtn" type="button">取消</button>
@@ -301,7 +339,9 @@
         </div>
         <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭重新生成确认" title="关闭重新生成确认"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
-      <p id="retryGenerationDialogDescription">请求超时或连接中断时，服务端仍可能已经生成并扣费。请先核对供应商账单，确认后再重新提交。</p>
+      <div class="confirm-dialog-content">
+        <p id="retryGenerationDialogDescription">请求超时或连接中断时，服务端仍可能已经生成并扣费。请先核对供应商账单，确认后再重新提交。</p>
+      </div>
       <div class="confirm-dialog-actions">
         <button class="button" id="cancelRetryGenerationBtn" type="button">暂不重试</button>
         <button class="button button-danger" id="confirmRetryGenerationBtn" type="button">仍要重新生成</button>

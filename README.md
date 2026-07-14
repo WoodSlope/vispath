@@ -2,6 +2,14 @@
 
 VisPath（视觉路径）是一个本地优先的 AI 视觉方向画板：输入原始提示词或参考图，选择要探索的视觉维度，生成多套结构清晰、可复制或可直接生图的提示词，并在画板中比较方向。
 
+## 版权与归属
+
+VisPath 由 LINPO LAB 维护。
+
+© 2026 LINPO LAB. All rights reserved.
+
+项目页面、说明文档和视觉资产默认按保留所有权利处理；第三方库、模型和服务仍遵循各自原始许可与服务条款。
+
 ## 当前阶段
 
 提示词方案通过兼容 OpenAI Responses 接口的文本服务生成。API 配置只填写以 `/v1` 结尾的根地址、Key、模型和图片生成方式，具体接口后缀由程序固定拼接：文本使用 `/responses`，同步生图使用 `/images/generations`，异步生图使用 `/images/generations/async`。异步模式会保存 `task_id`，再通过 `/images/tasks/{task_id}` 轮询并回填结果，刷新页面后可继续查询未完成任务。图片请求严格对齐 Aixoras 文档 Demo：同步请求使用 `quality: standard`、`response_format: url`、`watermark: false`，异步请求使用 `response_format: url`；两种方式都通过 `aspect_ratio` 控制比例，不发送未声明的 `size`。解析时仍同时兼容服务端实际返回的 `b64_json` 和 `url`；结果卡按真实响应显示“实际返回 Base64/URL”。生成批次、提示词快照、接口模式、结果状态、实际返回格式和图片尺寸保存在浏览器 IndexedDB 中，结果卡会对比请求比例与实际比例。供应商与模型属于浏览器配置，不进入前端产品文案。
