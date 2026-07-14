@@ -31,6 +31,9 @@ VisPath（视觉路径）是一个本地优先的 AI 视觉方向画板：输入
 
 ```text
 README.md
+AGENTS.md                # 智能体协作与 UI 修改前置规则
+DESIGN_SYSTEM.md         # 可执行 Token、组件、布局和状态契约
+UI_STYLE_GUIDE.md        # 产品视觉语言与体验原则
 PRODUCT_SPEC.md           # MVP 产品说明
 index.html                # HTML 应用入口
 styles.css               # 响应式视觉样式
@@ -63,10 +66,12 @@ GitHub Pages 只能托管静态文件，不能运行 `server.mjs`。部署后打
 
 ```text
 npm install
+npm run test:design-system
+npm run test:file-open
 npm run test:experience
 ```
 
-体验测试会使用本机 Chrome，拦截外部 AI 请求，并验证参考图上传预览、限流 / 服务故障 / 超时反馈、移动端阶段与蓝图折叠、单条历史删除、撤销、刷新恢复清理任务及重置清理。可通过 `APP_URL` 和 `BROWSER_EXECUTABLE` 覆盖默认页面地址。
+设计系统契约测试会检查共享 Token、弹窗关闭按钮结构、默认描边、无障碍属性和项目规范引用。文件打开测试验证静态页面可以直接初始化。体验测试会使用本机 Chrome，拦截外部 AI 请求，并验证参考图上传预览、限流 / 服务故障 / 超时反馈、移动端阶段与蓝图折叠、单条历史删除、撤销、刷新恢复清理任务及重置清理。可通过 `APP_URL` 和 `BROWSER_EXECUTABLE` 覆盖默认页面地址。
 
 如果系统终端没有 `node`，先安装 Node.js，再运行上述命令。
 

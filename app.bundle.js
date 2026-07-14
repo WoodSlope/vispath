@@ -525,7 +525,6 @@ function renderPromptCards() {
     `;
   }).join("");
   syncSubmissionBar();
-  syncStageNav();
 }
 
 function createLocalPromptPreview() {
@@ -578,16 +577,6 @@ function applyLocalPromptPreview() {
   return true;
 }
 
-function syncStageNav() {
-  const hasPrompts = (state.blueprint?.variants.length || 0) > 0;
-  const hasResults = state.generationEntries.length > 0;
-  const promptButton = document.querySelector('[data-stage-target="promptStage"]');
-  const resultButton = document.querySelector('[data-stage-target="resultStage"]');
-  if (promptButton) promptButton.disabled = !hasPrompts;
-  if (resultButton) resultButton.disabled = !hasResults;
-  updateActiveStageFromScroll();
-}
-
 function setActiveStage(stageId) {
   stageButtons.forEach((button) => {
     const active = button.dataset.stageTarget === stageId;
@@ -611,7 +600,7 @@ function goToStage(stageId) {
 
 function updateActiveStageFromScroll() {
   if (!window.matchMedia("(max-width: 600px)").matches) return;
-  const available = stageButtons.filter((button) => !button.disabled);
+  const available = stageButtons;
   let activeId = available[0]?.dataset.stageTarget || "setupStage";
   available.forEach((button) => {
     const section = document.getElementById(button.dataset.stageTarget);
@@ -772,7 +761,6 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
     </details>
   `;
   }).join("");
-  syncStageNav();
 }
 
 function shouldSimulateFailure(prompt) {
@@ -1572,8 +1560,13 @@ $("cleanupHistoryBtn").addEventListener("click", cleanupOldHistory);
 $("cancelHistoryBtn").addEventListener("click", () => historyDialog.close());
 $("cancelRetryGenerationBtn").addEventListener("click", closeRetryGenerationDialog);
 $("confirmRetryGenerationBtn").addEventListener("click", confirmRetryGeneration);
-$("closeImagePreviewBtn").addEventListener("click", closeImagePreview);
-$("closeComparisonBtn").addEventListener("click", closeBatchComparison);
+document.querySelectorAll("[data-dialog-close]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const dialog = button.closest("dialog");
+    if (dialog === retryGenerationDialog) closeRetryGenerationDialog();
+    else dialog?.close();
+  });
+});
 $("comparisonGrid").addEventListener("click", (event) => {
   const button = event.target.closest('[data-action="open-comparison-image"]');
   const item = event.target.closest("[data-comparison-id]");
@@ -1611,7 +1604,7 @@ $("generationOverview").addEventListener("click", (event) => {
 $("clearResultFiltersBtn").addEventListener("click", clearResultFilters);
 document.querySelector(".stage-nav").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-stage-target]");
-  if (!button || button.disabled) return;
+  if (!button) return;
   goToStage(button.dataset.stageTarget);
 });
 window.addEventListener("scroll", () => window.requestAnimationFrame(updateActiveStageFromScroll), { passive: true });

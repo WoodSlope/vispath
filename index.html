@@ -16,6 +16,11 @@
         <small>Visual direction board</small>
       </span>
     </a>
+    <nav class="stage-nav" aria-label="工作阶段">
+      <button type="button" data-stage-target="setupStage"><span class="stage-index" aria-hidden="true">01</span><span>输入</span></button>
+      <button type="button" data-stage-target="promptStage"><span class="stage-index" aria-hidden="true">02</span><span>方案</span></button>
+      <button type="button" data-stage-target="resultStage"><span class="stage-index" aria-hidden="true">03</span><span>结果</span><span class="stage-count hidden" id="activeGenerationNavCount" aria-hidden="true">0</span></button>
+    </nav>
     <div class="topbar-actions">
       <span class="status-pill" id="serviceStatus"><span class="status-dot"></span><span id="serviceStatusText">正在检查 AI 服务</span></span>
       <button class="button button-quiet" id="apiSettingsBtn" type="button">API 配置</button>
@@ -26,16 +31,11 @@
   <section class="desktop-required" id="desktopRequired" aria-labelledby="desktopRequiredTitle">
     <span class="brand-mark desktop-required-mark" aria-hidden="true"><i></i><i></i><i></i></span>
     <p>VisPath · 视觉路径</p>
-    <h1 id="desktopRequiredTitle">当前版本更适合在电脑端使用</h1>
+    <h1 id="desktopRequiredTitle">当前版本仅支持电脑端使用</h1>
     <span>请使用宽度大于 900px 的浏览器访问。</span>
   </section>
 
   <main id="top" class="app-shell">
-    <nav class="stage-nav" aria-label="工作阶段">
-      <button type="button" data-stage-target="setupStage"><span class="stage-index" aria-hidden="true">01</span><span>输入</span></button>
-      <button type="button" data-stage-target="promptStage" disabled><span class="stage-index" aria-hidden="true">02</span><span>方案</span></button>
-      <button type="button" data-stage-target="resultStage" disabled><span class="stage-index" aria-hidden="true">03</span><span>结果</span><span class="stage-count hidden" id="activeGenerationNavCount" aria-hidden="true">0</span></button>
-    </nav>
     <section class="workspace-grid" aria-label="视觉方向生成工作区">
       <aside class="control-panel" id="setupStage" aria-labelledby="controlTitle">
         <div class="panel-heading">
@@ -63,7 +63,7 @@
             <div class="file-preview hidden" id="filePreview">
               <img id="filePreviewImage" alt="已上传参考图预览">
               <div><strong id="fileName"></strong><small>参考图已加入本轮输入</small></div>
-              <button class="icon-button" id="removeFileBtn" type="button" aria-label="移除参考图"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button class="icon-button" id="removeFileBtn" type="button" aria-label="移除参考图" title="移除参考图"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
           </div>
           </section>
@@ -203,9 +203,12 @@
 
   <dialog class="confirm-dialog api-dialog" id="apiSettingsDialog" aria-labelledby="apiSettingsTitle">
     <div class="confirm-dialog-body">
-      <div class="title-pair dialog-title">
-        <span class="step-label">BROWSER API MODE</span>
-        <h2 id="apiSettingsTitle">API 配置</h2>
+      <div class="confirm-dialog-head">
+        <div class="title-pair dialog-title">
+          <span class="step-label">BROWSER API MODE</span>
+          <h2 id="apiSettingsTitle">API 配置</h2>
+        </div>
+        <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭 API 配置" title="关闭 API 配置"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <p>配置保存在当前浏览器的 IndexedDB 中，不会写入 GitHub Pages 文件。浏览器直连还需要中转站允许 CORS。</p>
       <label class="form-field api-root-field" for="apiBaseUrlInput"><span>API 根地址</span><input id="apiBaseUrlInput" type="url" placeholder="https://api.aixoras.com/v1"><small>只填写到 /v1，具体接口后缀由程序自动添加。</small></label>
@@ -241,9 +244,12 @@
 
   <dialog class="confirm-dialog" id="resetDialog" aria-labelledby="resetDialogTitle" aria-describedby="resetDialogDescription">
     <div class="confirm-dialog-body">
-      <div class="title-pair dialog-title">
-        <span class="step-label">RESET WORKSPACE</span>
-        <h2 id="resetDialogTitle">确认重置工作台？</h2>
+      <div class="confirm-dialog-head">
+        <div class="title-pair dialog-title">
+          <span class="step-label">RESET WORKSPACE</span>
+          <h2 id="resetDialogTitle">确认重置工作台？</h2>
+        </div>
+        <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭重置确认" title="关闭重置确认"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <p id="resetDialogDescription">当前输入、提示词方案和本地生成历史都会被清空，操作后无法恢复。</p>
       <div class="confirm-dialog-actions">
@@ -255,9 +261,12 @@
 
   <dialog class="confirm-dialog history-dialog" id="historyDialog" aria-labelledby="historyDialogTitle">
     <div class="confirm-dialog-body">
-      <div class="title-pair dialog-title">
-        <span class="step-label">LOCAL HISTORY</span>
-        <h2 id="historyDialogTitle">历史管理</h2>
+      <div class="confirm-dialog-head">
+        <div class="title-pair dialog-title">
+          <span class="step-label">LOCAL HISTORY</span>
+          <h2 id="historyDialogTitle">历史管理</h2>
+        </div>
+        <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭历史管理" title="关闭历史管理"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <p>生成记录保存在当前浏览器中。清理旧记录不会影响当前输入和 API 配置。</p>
       <div class="history-stats" aria-label="本地历史统计">
@@ -285,9 +294,12 @@
 
   <dialog class="confirm-dialog" id="retryGenerationDialog" aria-labelledby="retryGenerationDialogTitle" aria-describedby="retryGenerationDialogDescription">
     <div class="confirm-dialog-body">
-      <div class="title-pair dialog-title">
-        <span class="step-label">RETRY GENERATION</span>
-        <h2 id="retryGenerationDialogTitle">确认重新生成？</h2>
+      <div class="confirm-dialog-head">
+        <div class="title-pair dialog-title">
+          <span class="step-label">RETRY GENERATION</span>
+          <h2 id="retryGenerationDialogTitle">确认重新生成？</h2>
+        </div>
+        <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭重新生成确认" title="关闭重新生成确认"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <p id="retryGenerationDialogDescription">请求超时或连接中断时，服务端仍可能已经生成并扣费。请先核对供应商账单，确认后再重新提交。</p>
       <div class="confirm-dialog-actions">
@@ -303,7 +315,7 @@
         <div><span class="step-label">IMAGE PREVIEW</span><h2 id="imagePreviewTitle">生成图片预览</h2><small id="imagePreviewMeta"></small></div>
         <div class="image-preview-actions">
           <a class="button button-quiet" id="imageDownloadLink" href="" download>下载原图</a>
-          <button class="icon-button" id="closeImagePreviewBtn" type="button" aria-label="关闭大图预览"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="icon-button dialog-close" id="closeImagePreviewBtn" type="button" data-dialog-close aria-label="关闭大图预览" title="关闭大图预览"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         </div>
       </div>
       <div class="image-preview-stage"><img id="imagePreviewImage" alt=""></div>
@@ -314,7 +326,7 @@
     <div class="comparison-shell">
       <div class="image-preview-head">
         <div><span class="step-label">BATCH COMPARISON</span><h2 id="comparisonTitle">批次对比</h2><small id="comparisonMeta"></small></div>
-        <button class="icon-button" id="closeComparisonBtn" type="button" aria-label="关闭批次对比"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="icon-button dialog-close" id="closeComparisonBtn" type="button" data-dialog-close aria-label="关闭批次对比" title="关闭批次对比"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <div class="comparison-grid" id="comparisonGrid"></div>
     </div>
