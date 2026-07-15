@@ -54,7 +54,7 @@
           <section class="form-section" aria-labelledby="inputSectionTitle">
             <h3 class="sr-only" id="inputSectionTitle">输入内容</h3>
           <div class="field-group form-field">
-            <label for="sourcePrompt">原始提示词</label>
+            <label class="field-label-inline" for="sourcePrompt"><span>原始提示词</span><small class="input-lock-status hidden" id="sourcePromptStatus">已锁定</small></label>
             <textarea id="sourcePrompt" rows="4" placeholder="例如：为一家咖啡店做一张夏日开业海报，主体是一杯冰拿铁，画面需要留出标题区。"></textarea>
           </div>
 
@@ -122,6 +122,7 @@
           </section>
 
           <div class="setup-action" aria-live="polite">
+            <button class="button button-quiet hidden" id="editSetupBtn" type="button">修改输入与设置</button>
             <button class="button button-primary" id="generateBtn" type="button" aria-describedby="generateHint">
               <span id="generateBtnLabel">生成视觉方向</span><span aria-hidden="true">↗</span>
             </button>
@@ -139,7 +140,7 @@
             </div>
           </div>
           <div class="blueprint-panel" id="blueprintPanel">
-            <div class="blueprint-empty"><strong>尚未建立蓝图</strong><span>生成方向后，这里会显示固定内容、本轮变量和输出限制。</span></div>
+            <div class="blueprint-empty"><strong>等待输入内容</strong><span>输入提示词或添加参考图后，这里会实时预览本轮设置。</span></div>
           </div>
         </div>
       </aside>
@@ -215,22 +216,25 @@
       <div class="confirm-dialog-head">
         <div class="title-pair dialog-title">
           <span class="step-label">BROWSER API MODE</span>
-          <h2 id="apiSettingsTitle">API 配置</h2>
-          <small class="dialog-meta" id="apiSettingsStorageNote">仅保存在当前浏览器</small>
+          <div class="api-dialog-title-row">
+            <h2 id="apiSettingsTitle">API 配置</h2>
+            <button class="dialog-title-action" id="testApiConnectionBtn" type="button">测试连接</button>
+          </div>
+          <small class="dialog-meta" id="apiSettingsStorageNote">仅保存在当前浏览器 · 文本测试会发送一次极小请求</small>
         </div>
         <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭 API 配置" title="关闭 API 配置"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <div class="confirm-dialog-content">
         <div class="api-settings-grid">
         <section class="api-provider-group" aria-labelledby="textApiGroupTitle">
-          <h3 id="textApiGroupTitle">文本 API</h3>
-          <label class="form-field" for="textBaseUrlInput"><span>API 地址</span><input id="textBaseUrlInput" type="url" placeholder="https://text-api.example/v1" aria-describedby="textBaseUrlHint textBaseUrlError"><small id="textBaseUrlHint">填写到 /v1</small><small class="field-error hidden" id="textBaseUrlError" role="alert">填写文本 API Key 时必须同时填写地址。</small></label>
+          <div class="api-provider-heading"><h3 id="textApiGroupTitle">文本 API</h3><span class="api-test-status" id="textApiTestStatus" role="status">未测试</span></div>
+          <label class="form-field" for="textBaseUrlInput"><span class="form-field-label-row"><span>API 地址</span><small id="textBaseUrlHint">填写到 /v1</small></span><input id="textBaseUrlInput" type="url" placeholder="https://text-api.example/v1" aria-describedby="textBaseUrlHint textBaseUrlError"><small class="field-error hidden" id="textBaseUrlError" role="alert">填写文本 API Key 时必须同时填写地址。</small></label>
           <label class="form-field" for="textApiKeyInput"><span>API Key</span><input id="textApiKeyInput" type="password" autocomplete="off"></label>
           <label class="form-field" for="textModelInput"><span>模型</span><input id="textModelInput" type="text" value="gpt-5.4-mini"></label>
         </section>
         <section class="api-provider-group" aria-labelledby="imageApiGroupTitle">
-          <h3 id="imageApiGroupTitle">生图 API</h3>
-          <label class="form-field" for="imageBaseUrlInput"><span>API 地址</span><input id="imageBaseUrlInput" type="url" placeholder="https://image-api.example/v1" aria-describedby="imageBaseUrlHint imageBaseUrlError"><small id="imageBaseUrlHint">填写到 /v1</small><small class="field-error hidden" id="imageBaseUrlError" role="alert">填写生图 API Key 时必须同时填写地址。</small></label>
+          <div class="api-provider-heading"><h3 id="imageApiGroupTitle">生图 API</h3><span class="api-test-status" id="imageApiTestStatus" role="status">未测试</span></div>
+          <label class="form-field" for="imageBaseUrlInput"><span class="form-field-label-row"><span>API 地址</span><small id="imageBaseUrlHint">填写到 /v1</small></span><input id="imageBaseUrlInput" type="url" placeholder="https://image-api.example/v1" aria-describedby="imageBaseUrlHint imageBaseUrlError"><small class="field-error hidden" id="imageBaseUrlError" role="alert">填写生图 API Key 时必须同时填写地址。</small></label>
           <label class="form-field" for="imageApiKeyInput"><span>API Key</span><input id="imageApiKeyInput" type="password" autocomplete="off"></label>
           <label class="form-field" for="imageModelInput"><span>模型</span><input id="imageModelInput" type="text" value="gpt-image-2"></label>
           <label class="form-field" for="imageGenerationModeInput"><span>生成方式</span><span class="select-control"><select id="imageGenerationModeInput"><option value="async" selected>异步图片生成 · 推荐</option><option value="sync">同步图片生成</option></select></span></label>
@@ -293,6 +297,25 @@
       <div class="confirm-dialog-actions">
         <button class="button" id="cancelResetBtn" type="button">取消</button>
         <button class="button button-danger" id="confirmResetBtn" type="button">确认重置</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="confirm-dialog" id="editSetupDialog" aria-labelledby="editSetupDialogTitle" aria-describedby="editSetupDialogDescription">
+    <div class="confirm-dialog-body">
+      <div class="confirm-dialog-head">
+        <div class="title-pair dialog-title">
+          <span class="step-label">EDIT INPUT</span>
+          <h2 id="editSetupDialogTitle">修改输入与设置？</h2>
+        </div>
+        <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭修改输入确认" title="关闭修改输入确认"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="confirm-dialog-content">
+        <p id="editSetupDialogDescription">修改本轮输入将清空当前提示词方案。已经提交的图片任务和历史结果不受影响。</p>
+      </div>
+      <div class="confirm-dialog-actions">
+        <button class="button" id="cancelEditSetupBtn" type="button">取消</button>
+        <button class="button button-danger" id="confirmEditSetupBtn" type="button">清空方案并修改</button>
       </div>
     </div>
   </dialog>

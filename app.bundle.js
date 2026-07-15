@@ -340,6 +340,7 @@ const blueprintToggle = $("toggleBlueprintBtn");
 const apiSettingsDialog = $("apiSettingsDialog");
 const clearApiSettingsDialog = $("clearApiSettingsDialog");
 const resetDialog = $("resetDialog");
+const editSetupDialog = $("editSetupDialog");
 const historyDialog = $("historyDialog");
 const retryGenerationDialog = $("retryGenerationDialog");
 const imagePreviewDialog = $("imagePreviewDialog");
@@ -349,11 +350,17 @@ let imageRatioOverridden = false;
 let pendingRetryEntryId = "";
 let historySaveQueue = Promise.resolve();
 let generationQueue = Promise.resolve();
+let textTooltipSyncFrame = 0;
 const IMAGE_CLEANUP_KEY = "ai-visual-direction-board-pending-image-cleanup";
+const OPEN_BATCHES_KEY = "vispath-open-generation-batches";
 const IMAGE_CLEANUP_DELAY = 5500;
 const IMAGE_POLL_INTERVAL = 3000;
 const IMAGE_RETRY_DELAYS = [5000, 15000];
 const imageCleanupTimers = new Map();
+let isGeneratingDirections = false;
+let openGenerationBatchIds = readOpenGenerationBatchIds();
+let hasSavedBatchDisclosure = localStorage.getItem(OPEN_BATCHES_KEY) !== null;
+let generationHistoryLoaded = false;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -361,6 +368,28 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function readOpenGenerationBatchIds() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(OPEN_BATCHES_KEY) || "[]");
+    return new Set(Array.isArray(ids) ? ids.filter((id) => typeof id === "string" && id) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveOpenGenerationBatchIds() {
+  localStorage.setItem(OPEN_BATCHES_KEY, JSON.stringify([...openGenerationBatchIds]));
+  hasSavedBatchDisclosure = true;
+}
+
+function pruneOpenGenerationBatchIds(batches) {
+  const availableIds = new Set(batches.map((batch) => batch.id));
+  const nextIds = new Set([...openGenerationBatchIds].filter((id) => availableIds.has(id)));
+  if (nextIds.size === openGenerationBatchIds.size) return;
+  openGenerationBatchIds = nextIds;
+  saveOpenGenerationBatchIds();
 }
 
 function renderCloseIcon() {
@@ -437,6 +466,104 @@ function readApiSettingsForm() {
   };
 }
 
+function setApiTestStatus(kind, tone, message) {
+  const status = $(`${kind}ApiTestStatus`);
+  status.className = `api-test-status${tone === "neutral" ? "" : ` is-${tone}`}`;
+  status.textContent = message;
+}
+
+function resetApiTestStatus(kind) {
+  if ($("testApiConnectionBtn").disabled) return;
+  setApiTestStatus(kind, "neutral", "未测试");
+}
+
+function classifyApiTestFailure(response, kind) {
+  if (response.status === 401 || response.status === 403) return { tone: "error", message: "API Key 无效或无权限" };
+  if (response.status === 429) return { tone: "warning", message: "请求过于频繁，请稍后再试" };
+  if (response.status >= 500) return { tone: "error", message: "服务暂不可用" };
+  if (response.status === 404 || response.status === 405) {
+    return kind === "image"
+      ? { tone: "warning", message: "服务可达，无法无费用验证" }
+      : { tone: "error", message: "未找到 /responses 接口" };
+  }
+  return { tone: "error", message: `连接测试失败（HTTP ${response.status}）` };
+}
+
+async function fetchApiTest(url, options) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 10000);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function getApiTestReadiness(settings, kind) {
+  const baseUrl = normalizeApiBaseUrl(settings[`${kind}BaseUrl`]);
+  const apiKey = String(settings[`${kind}ApiKey`] || "").trim();
+  const model = String(settings[`${kind}Model`] || "").trim();
+  if (!baseUrl && !apiKey) return { ready: false, empty: true };
+  if (!baseUrl || !apiKey || !model) return { ready: false, empty: false };
+  return { ready: true, baseUrl, apiKey, model };
+}
+
+async function testTextApiConnection(settings) {
+  const readiness = getApiTestReadiness(settings, "text");
+  if (!readiness.ready) return readiness.empty
+    ? { tone: "neutral", message: "未配置" }
+    : { tone: "error", message: "请补充地址、Key 和模型" };
+  try {
+    const response = await fetchApiTest(`${readiness.baseUrl}/responses`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${readiness.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: readiness.model, input: "只回复 OK", max_output_tokens: 16, stream: false })
+    });
+    return response.ok ? { tone: "success", message: "文本接口可用" } : classifyApiTestFailure(response, "text");
+  } catch (error) {
+    return { tone: "error", message: error.name === "AbortError" ? "连接超时" : "连接失败：检查 CORS、网络或地址" };
+  }
+}
+
+async function testImageApiConnection(settings) {
+  const readiness = getApiTestReadiness(settings, "image");
+  if (!readiness.ready) return readiness.empty
+    ? { tone: "neutral", message: "未配置" }
+    : { tone: "error", message: "请补充地址、Key 和模型" };
+  try {
+    const response = await fetchApiTest(`${readiness.baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${readiness.apiKey}` }
+    });
+    return response.ok ? { tone: "success", message: "基础连接可用，未实际生图" } : classifyApiTestFailure(response, "image");
+  } catch (error) {
+    return { tone: "error", message: error.name === "AbortError" ? "连接超时" : "连接失败：检查 CORS、网络或地址" };
+  }
+}
+
+async function testApiConnections() {
+  const button = $("testApiConnectionBtn");
+  if (button.disabled) return;
+  const settings = readApiSettingsForm();
+  const textReadiness = getApiTestReadiness(settings, "text");
+  const imageReadiness = getApiTestReadiness(settings, "image");
+  button.disabled = true;
+  button.textContent = "测试中…";
+  setApiTestStatus("text", textReadiness.ready ? "testing" : "neutral", textReadiness.empty ? "未配置" : "测试中…");
+  setApiTestStatus("image", imageReadiness.ready ? "testing" : "neutral", imageReadiness.empty ? "未配置" : "测试中…");
+  try {
+    const [textResult, imageResult] = await Promise.all([
+      testTextApiConnection(settings),
+      testImageApiConnection(settings)
+    ]);
+    setApiTestStatus("text", textResult.tone, textResult.message);
+    setApiTestStatus("image", imageResult.tone, imageResult.message);
+    showToast("连接测试已完成，结果未自动保存");
+  } finally {
+    button.disabled = false;
+    button.textContent = "测试连接";
+  }
+}
+
 function getTaskType() {
   return TASK_TYPES.find((item) => item.id === taskTypeSelect.value) || TASK_TYPES[0];
 }
@@ -472,19 +599,74 @@ function renderDimensions() {
   `).join("");
 }
 
-function renderBlueprint(blueprint) {
-  const dimension = selectedDimension();
-  $("blueprintStatus").textContent = "已建立";
+function renderBlueprintEmpty() {
+  $("blueprintStatus").textContent = "等待输入";
+  $("blueprintPanel").innerHTML = '<div class="blueprint-empty"><strong>等待输入内容</strong><span>输入提示词或添加参考图后，这里会实时预览本轮设置。</span></div>';
+}
+
+function renderBlueprintPreview() {
+  const prompt = $("sourcePrompt").value.trim();
+  if (!prompt && !state.referenceImageData) {
+    renderBlueprintEmpty();
+    return;
+  }
+  $("blueprintStatus").textContent = "实时预览";
   $("blueprintPanel").innerHTML = `
-    <div class="blueprint-block"><span class="blueprint-block-index">01</span><div><strong>固定内容</strong><p>${escapeHtml(blueprint.locked.intent)}<br>${escapeHtml(blueprint.locked.subject)}</p></div></div>
-    <div class="blueprint-block"><span class="blueprint-block-index">02</span><div><strong>本轮变化</strong><p>${escapeHtml(dimension.name)} · ${blueprint.variants.length} 套方案</p></div></div>
-    <div class="blueprint-block"><span class="blueprint-block-index">03</span><div><strong>输出限制</strong><p>${escapeHtml(blueprint.locked.technical.ratio)} · ${escapeHtml(blueprint.locked.textLayout)}</p></div></div>
+    <div class="blueprint-block"><span class="blueprint-block-index">01</span><div><strong>原始输入</strong><p>${escapeHtml(prompt || "已添加参考图，等待提取固定内容")}</p></div></div>
+    <div class="blueprint-block"><span class="blueprint-block-index">02</span><div><strong>本轮变化</strong><p>${escapeHtml(selectedDimension().name)} · ${escapeHtml($("optionCount").value)} 套方案</p></div></div>
+    <div class="blueprint-block"><span class="blueprint-block-index">03</span><div><strong>输出限制</strong><p>${escapeHtml(imageRatioSelect.value)} · ${escapeHtml($("imageResolution").value)}</p></div></div>
   `;
 }
 
-function renderBlueprintEmpty() {
-  $("blueprintStatus").textContent = "等待输入";
-  $("blueprintPanel").innerHTML = '<div class="blueprint-empty"><strong>尚未建立蓝图</strong><span>生成方向后，这里会显示固定内容、本轮变量和输出限制。</span></div>';
+function resetGeneratedDirectionsForSetupChange() {
+  renderBlueprintPreview();
+}
+
+function setSourcePromptReadOnly(readOnly) {
+  const sourcePrompt = $("sourcePrompt");
+  sourcePrompt.readOnly = readOnly;
+  sourcePrompt.title = readOnly ? "当前输入已锁定，使用“修改输入与设置”后可重新编辑" : "";
+  $("sourcePromptStatus").classList.toggle("hidden", !readOnly);
+}
+
+function setSetupControlsDisabled(disabled) {
+  [taskTypeSelect, $("optionCount"), $("imageResolution"), imageRatioSelect, $("referenceImage"), $("removeFileBtn")]
+    .forEach((control) => { control.disabled = disabled; });
+  dimensionList.querySelectorAll('input[name="dimension"]').forEach((control) => { control.disabled = disabled; });
+  $("dropzone").classList.toggle("is-disabled", disabled);
+  $("dropzone").setAttribute("aria-disabled", String(disabled));
+}
+
+function syncSetupLockState() {
+  const locked = isGeneratingDirections || Boolean(state.blueprint);
+  setSourcePromptReadOnly(locked);
+  setSetupControlsDisabled(locked);
+  $("editSetupBtn").classList.toggle("hidden", !state.blueprint || isGeneratingDirections);
+}
+
+function openEditSetupDialog() {
+  if (!state.blueprint || isGeneratingDirections) return;
+  const count = state.blueprint.variants.length;
+  $("editSetupDialogDescription").textContent = `修改本轮输入将清空当前 ${count} 个提示词方案。已经提交的图片任务和历史结果不受影响。`;
+  showDialogAtTop(editSetupDialog);
+  $("cancelEditSetupBtn").focus();
+}
+
+function closeEditSetupDialog() {
+  editSetupDialog.close();
+}
+
+function confirmEditSetup() {
+  closeEditSetupDialog();
+  state.blueprint = null;
+  state.selectedVariantIds.clear();
+  renderPromptCards();
+  syncSetupLockState();
+  renderBlueprintPreview();
+  $("generateBtnLabel").textContent = "生成视觉方向";
+  $("generateHint").textContent = "输入和设置已解锁，请完成修改后重新生成视觉方向。";
+  $("sourcePrompt").focus();
+  showToast("当前提示词方案已清空，可以修改输入和设置");
 }
 
 function setBlueprintCollapsed(collapsed) {
@@ -571,7 +753,7 @@ function applyLocalPromptPreview() {
   if (!isLocal || previewMode !== "prompts") return false;
   state.blueprint = createLocalPromptPreview();
   state.selectedVariantIds.clear();
-  renderBlueprint(state.blueprint);
+  renderBlueprintPreview();
   renderPromptCards();
   $("boardHint").textContent = "本地预览 · 示例方案不会调用 API 或写入历史";
   goToStage("promptStage", { resetScroll: true });
@@ -713,13 +895,58 @@ function syncGenerationOverview() {
   });
 }
 
+function syncTextTooltipOverflow(root = generationFeed) {
+  root.querySelectorAll(".text-tooltip-trigger").forEach((trigger) => {
+    const target = trigger.querySelector("[data-tooltip-overflow-target]");
+    const tooltip = trigger.querySelector(".text-tooltip");
+    if (!target || !tooltip) return;
+    let hasOverflow = target.scrollWidth > target.clientWidth + 1 || target.scrollHeight > target.clientHeight + 1;
+    if (target.dataset.tooltipOverflowTarget === "multiline") {
+      const measurement = target.cloneNode(true);
+      measurement.removeAttribute("data-tooltip-overflow-target");
+      Object.assign(measurement.style, {
+        position: "absolute",
+        width: `${target.clientWidth}px`,
+        height: "auto",
+        overflow: "visible",
+        visibility: "hidden",
+        pointerEvents: "none",
+        display: "block",
+        webkitLineClamp: "unset"
+      });
+      trigger.appendChild(measurement);
+      hasOverflow = measurement.scrollHeight > target.clientHeight + 1;
+      measurement.remove();
+    }
+    trigger.classList.toggle("has-overflow", hasOverflow);
+    trigger.dataset.tooltipMeasured = "true";
+    if (hasOverflow) {
+      trigger.tabIndex = 0;
+      trigger.setAttribute("aria-describedby", tooltip.id);
+    } else {
+      trigger.removeAttribute("tabindex");
+      trigger.removeAttribute("aria-describedby");
+    }
+  });
+}
+
+function scheduleTextTooltipOverflowSync() {
+  window.cancelAnimationFrame(textTooltipSyncFrame);
+  textTooltipSyncFrame = window.requestAnimationFrame(() => syncTextTooltipOverflow());
+}
+
 function renderGenerationFeed({ openBatchId = "" } = {}) {
-  const openBatchIds = new Set([...generationFeed.querySelectorAll(".generation-batch[open]")].map((item) => item.dataset.batchId));
   const allBatches = groupGenerationEntries();
+  if (generationHistoryLoaded) pruneOpenGenerationBatchIds(allBatches);
+  if (openBatchId) {
+    openGenerationBatchIds.add(openBatchId);
+    saveOpenGenerationBatchIds();
+  } else if (!hasSavedBatchDisclosure && allBatches[0]) {
+    openGenerationBatchIds.add(allBatches[0].id);
+  }
   syncBatchFilterOptions(allBatches);
   const filteredEntries = filterGenerationEntries();
   const batches = groupGenerationEntries(filteredEntries);
-  const hasVisibleOpenBatch = batches.some((batch) => openBatchIds.has(batch.id));
   const hasEntries = state.generationEntries.length > 0;
   $("emptyGenerationBoard").classList.toggle("hidden", hasEntries);
   $("filteredGenerationEmpty").classList.toggle("hidden", !hasEntries || filteredEntries.length > 0);
@@ -730,7 +957,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
   $("generationCount").textContent = state.generationEntries.length;
   syncGenerationOverview();
   if (hasEntries) $("feedHint").textContent = `${filteredEntries.length === state.generationEntries.length ? "" : `显示 ${filteredEntries.length} / ${state.generationEntries.length} · `}${allBatches.length} 个批次 · 当前浏览器`;
-  generationFeed.innerHTML = batches.map((batch, batchIndex) => {
+  generationFeed.innerHTML = batches.map((batch) => {
     const counts = getBatchStatusCounts(batch.entries);
     const comparableEntries = state.generationEntries.filter((entry) => (entry.batchId || `legacy_batch_${entry.batchNumber || "00"}`) === batch.id && entry.status === "ready" && entry.imageUrl);
     const statusSummary = [
@@ -739,7 +966,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
       counts.loading ? `<span class="is-loading">生成中 ${counts.loading}</span>` : ""
     ].filter(Boolean).join("");
     return `
-    <details class="generation-batch" data-batch-id="${escapeHtml(batch.id)}" ${openBatchId ? batch.id === openBatchId ? "open" : "" : hasVisibleOpenBatch ? openBatchIds.has(batch.id) ? "open" : "" : batchIndex === 0 ? "open" : ""}>
+    <details class="generation-batch" data-batch-id="${escapeHtml(batch.id)}" ${openGenerationBatchIds.has(batch.id) ? "open" : ""}>
       <summary class="generation-batch-summary">
         <span><strong>批次 ${escapeHtml(batch.number)}</strong><small>${escapeHtml(formatBatchTime(batch.createdAt))} · ${batch.entries.length} 条结果<span class="generation-batch-stats">${statusSummary}</span></small></span>
       </summary>
@@ -749,31 +976,28 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
       </div>
       <div class="generation-batch-grid">
         ${batch.entries.map((entry) => `
-    <article class="generation-card" data-generation-id="${escapeHtml(entry.id)}">
+    <article class="generation-card${entry.status === "error" ? " is-error" : ""}" data-generation-id="${escapeHtml(entry.id)}">
       <div class="generation-card-head">
-        <div class="generation-card-title"><strong>${escapeHtml(entry.variantTitle)}</strong><small>批次 ${entry.batchNumber} · ${escapeHtml(entry.createdAt)}<span class="generation-status ${escapeHtml(entry.status)}">${entry.status === "ready" ? "已完成" : entry.status === "error" ? "失败" : "生成中"}</span></small></div>
+        <div class="generation-card-title"><span class="generation-card-title-tooltip text-tooltip-trigger"><strong class="generation-card-title-text" data-tooltip-overflow-target>${escapeHtml(entry.variantTitle)}</strong><span class="generation-card-title-tooltip-content text-tooltip" id="generation-title-${escapeHtml(entry.id)}" role="tooltip">${escapeHtml(entry.variantTitle)}</span></span><small>批次 ${entry.batchNumber} · ${escapeHtml(entry.createdAt)}<span class="generation-status ${escapeHtml(entry.status)}">${entry.status === "ready" ? "已完成" : entry.status === "error" ? "失败" : "生成中"}</span></small></div>
         <div class="generation-card-tools">
           ${entry.status === "ready" ? `<button class="icon-button generation-favorite${entry.favorite ? " is-active" : ""}" type="button" data-action="toggle-favorite" aria-pressed="${Boolean(entry.favorite)}" aria-label="${entry.favorite ? "取消收藏" : "收藏"}${escapeHtml(entry.variantTitle)}" title="${entry.favorite ? "取消收藏" : "收藏候选"}">${renderStarIcon(entry.favorite)}</button>` : ""}
           <button class="icon-button generation-delete" type="button" data-action="delete" aria-label="删除${escapeHtml(entry.variantTitle)}记录" title="${entry.status === "loading" ? "生成中暂不能删除" : "删除这条记录"}" ${entry.status === "loading" ? "disabled" : ""}>${renderCloseIcon()}</button>
         </div>
       </div>
       <div class="generation-art ${escapeHtml(entry.artClass)} ${entry.status === "loading" ? "is-loading" : ""}">
-        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><span class="generation-image-frame" style="--generation-image-ratio:${getDisplayAspectRatio(entry).toFixed(6)}"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"></span><span class="generation-image-open-label">查看大图</span></button>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
+        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><span class="generation-image-frame" style="--generation-image-ratio:${getDisplayAspectRatio(entry).toFixed(6)}"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span class="generation-image-recovery" role="status"><strong>图片未加载</strong><small>可尝试下载恢复</small></span></span><span class="generation-image-open-label">查看大图</span></button>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
       </div>
       <div class="generation-body">
-        <div class="generation-card-summary"><strong>本轮变化</strong><p>${escapeHtml(entry.changeSummary)}</p></div>
         <div class="generation-card-meta"><span>请求 ${escapeHtml(entry.resolution || "1K")} · ${escapeHtml(entry.ratio || "未设比例")} · ${entry.generationMode === "sync" ? "同步" : "异步"}${entry.actualResponseFormat ? ` · 实际返回 ${entry.actualResponseFormat === "b64_json" ? "Base64" : "URL"}` : ""}</span><span>${entry.status !== "loading" && entry.startedAt && entry.completedAt ? `耗时 ${escapeHtml(formatGenerationElapsed(entry.startedAt, entry.completedAt))}` : "等待生成结果"}</span></div>
-        ${entry.imageUrl ? `<div class="generation-image-diagnostics">${renderActualImageSize(entry)}</div>` : ""}
+        ${entry.imageUrl ? `<div class="generation-image-diagnostics">${renderActualImageSize(entry)}</div>` : entry.status === "error" ? `<div class="generation-image-diagnostics"><span class="generation-error-tooltip-trigger text-tooltip-trigger"><span class="generation-error-label">失败原因</span><span class="generation-error-summary" data-tooltip-overflow-target>${escapeHtml(entry.errorMessage || "图片生成失败，请稍后重试")}</span><span class="generation-error-tooltip text-tooltip" id="generation-error-${escapeHtml(entry.id)}" role="tooltip"><strong>失败原因</strong><span>${escapeHtml(entry.errorMessage || "图片生成失败，请稍后重试")}</span>${entry.requestId ? `<small>Request ID：${escapeHtml(entry.requestId)}</small>` : ""}</span></span></div>` : ""}
         ${entry.status === "loading" ? `<div class="generation-progress" role="status"><span class="generation-spinner" aria-hidden="true"></span><span><strong>${escapeHtml(entry.taskStatus === "queued" ? "任务排队中" : entry.taskStatus ? "服务端生成中" : "正在提交任务")}${entry.taskProgress ? ` · ${escapeHtml(entry.taskProgress)}` : ""}</strong><small>已等待 <span class="generation-elapsed" data-started-at="${escapeHtml(entry.startedAt || entry.batchCreatedAt)}">${formatGenerationElapsed(entry.startedAt || entry.batchCreatedAt)}</span>${entry.taskId ? `<span class="generation-task-id">task_id：${escapeHtml(entry.taskId)}</span>` : ""}</small></span></div>` : ""}
-        ${entry.status === "error" ? `<p class="generation-error"><strong>失败原因：</strong>${escapeHtml(entry.errorMessage || "模拟生成失败，请重试")}${entry.requestId ? `<small>Request ID：${escapeHtml(entry.requestId)}</small>` : ""}</p>` : ""}
-        <details>
-          <summary>提示词快照</summary>
-          <div class="prompt-preview">${escapeHtml(entry.promptSnapshot)}</div>
-        </details>
-        <div class="generation-actions">
-          ${entry.status === "ready" ? `<button class="button button-primary" type="button" data-action="continue">基于此结果细化</button>` : ""}
-          <button class="button" type="button" data-action="copy-generation">复制提示词</button>
-          <button class="button" type="button" data-action="retry" ${entry.status === "loading" ? "disabled" : ""}>${entry.status === "loading" ? "生成中" : entry.status === "error" ? "重试" : "重新生成"}</button>
+        <div class="generation-prompt-snapshot">
+          <div class="prompt-preview" tabindex="0" role="region" aria-label="完整提示词">${escapeHtml(entry.promptSnapshot)}</div>
+        </div>
+        <div class="generation-card-summary"><strong>本轮变化</strong><span class="generation-change-tooltip text-tooltip-trigger"><span class="generation-change-text" data-tooltip-overflow-target="multiline">${escapeHtml(entry.changeSummary)}</span><span class="generation-change-tooltip-content text-tooltip" id="generation-change-${escapeHtml(entry.id)}" role="tooltip">${escapeHtml(entry.changeSummary)}</span></span></div>
+        <div class="generation-actions${entry.status === "error" ? " is-error" : ""}">
+          ${entry.status === "ready" ? `<button class="button button-primary" type="button" data-action="continue">基于此结果细化</button><button class="button" type="button" data-action="download-image">保存本地</button>` : ""}
+          ${entry.status === "error" ? `<button class="button button-primary" type="button" data-action="retry">重新尝试</button><button class="button" type="button" data-action="copy-generation">复制提示词</button>` : `<button class="button" type="button" data-action="copy-generation">复制提示词</button><button class="button" type="button" data-action="retry" ${entry.status === "loading" ? "disabled" : ""}>${entry.status === "loading" ? "生成中" : "重新生成"}</button>`}
         </div>
       </div>
     </article>
@@ -782,6 +1006,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
     </details>
   `;
   }).join("");
+  scheduleTextTooltipOverflowSync();
 }
 
 function shouldSimulateFailure(prompt) {
@@ -1123,6 +1348,7 @@ async function restoreGenerationHistory() {
     });
     state.generationEntries = savedEntries.filter((entry) => !pendingIds.has(entry.id));
     state.batchNumber = Number(saved?.batchNumber) || 0;
+    generationHistoryLoaded = true;
     renderGenerationFeed();
     if (saved && (saved.migrated || interruptedCount || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
     if (state.generationEntries.length) {
@@ -1132,6 +1358,7 @@ async function restoreGenerationHistory() {
     }
     resumePendingImageCleanup();
   } catch {
+    generationHistoryLoaded = true;
     $("feedHint").textContent = "历史记录暂时无法恢复";
     resumePendingImageCleanup();
   }
@@ -1238,6 +1465,9 @@ async function generateDirections() {
   }
   if (button.disabled) return;
   button.disabled = true;
+  isGeneratingDirections = true;
+  setSetupControlsDisabled(true);
+  setSourcePromptReadOnly(true);
   $("generateBtnLabel").textContent = "正在梳理提示词…";
   $("generateHint").textContent = "正在提取固定内容并整理本轮变量，请稍候。";
   try {
@@ -1247,17 +1477,22 @@ async function generateDirections() {
     if (!hasBrowserTextApi()) throw new Error("请先在右上角 API 配置中填写文本服务");
     state.blueprint = await requestDirectBlueprint(input);
     state.selectedVariantIds.clear();
-    renderBlueprint(state.blueprint);
+    renderBlueprintPreview();
     renderPromptCards();
+    syncSetupLockState();
     $("generateBtnLabel").textContent = "重新生成方向";
     $("generateHint").textContent = "已生成方案。请在中间选择一套或多套，再统一提交到右侧。";
     goToStage("promptStage", { resetScroll: true });
     showToast("已生成 AI 提示词方案");
   } catch (error) {
+    syncSetupLockState();
+    renderBlueprintPreview();
     $("generateBtnLabel").textContent = state.blueprint ? "重新生成方向" : "重试生成方向";
     $("generateHint").textContent = error.message || "提示词方案生成失败，请重试。";
     showToast(error.message || "提示词方案生成失败");
   } finally {
+    isGeneratingDirections = false;
+    syncSetupLockState();
     button.disabled = false;
   }
 }
@@ -1351,7 +1586,7 @@ function resetResultFilters() {
 }
 
 function handleGenerationAction(event) {
-  const button = event.target.closest("button[data-action]");
+  const button = event.target.closest("[data-action]");
   const batchNode = event.target.closest(".generation-batch");
   if (button?.dataset.action === "compare-batch" && batchNode) {
     event.preventDefault();
@@ -1391,6 +1626,15 @@ function handleGenerationAction(event) {
     openImagePreview(entry);
     return;
   }
+  if (button.dataset.action === "download-image" || button.dataset.action === "recover-image") {
+    const link = document.createElement("a");
+    link.href = entry.imageUrl;
+    link.download = createImageDownloadName(entry);
+    link.rel = "noopener";
+    link.click();
+    showToast(button.dataset.action === "recover-image" ? "已尝试下载恢复图片" : "已开始下载图片");
+    return;
+  }
   if (button.dataset.action === "toggle-favorite") {
     entry.favorite = !entry.favorite;
     renderGenerationFeed({ openBatchId: entry.batchId || `legacy_batch_${entry.batchNumber || "00"}` });
@@ -1423,7 +1667,8 @@ function handleGenerationAction(event) {
     $("sourcePrompt").value = entry.promptSnapshot;
     state.blueprint = null;
     state.selectedVariantIds.clear();
-    renderBlueprintEmpty();
+    syncSetupLockState();
+    renderBlueprintPreview();
     renderPromptCards();
     goToStage("setupStage", { resetScroll: true });
     showToast(`已继承“${entry.variantTitle}”，请设置下一轮探索`);
@@ -1456,6 +1701,7 @@ function resizeReferenceImage(file) {
 }
 
 async function handleFile(file) {
+  if (isGeneratingDirections) return;
   if (!file || !file.type.startsWith("image/")) return;
   state.referenceImage = file;
   try {
@@ -1473,6 +1719,7 @@ async function handleFile(file) {
 }
 
 function handlePaste(event) {
+  if (isGeneratingDirections) return;
   const imageFile = [...(event.clipboardData?.items || [])]
     .find((item) => item.kind === "file" && item.type.startsWith("image/"))
     ?.getAsFile();
@@ -1482,6 +1729,7 @@ function handlePaste(event) {
 }
 
 function removeReferenceImage() {
+  if (isGeneratingDirections) return;
   $("referenceImage").value = "";
   state.referenceImage = null;
   state.referenceImageData = "";
@@ -1573,7 +1821,10 @@ async function reset() {
   state.referenceImageData = "";
   state.blueprint = null;
   state.selectedVariantIds.clear();
+  syncSetupLockState();
   state.generationEntries = [];
+  openGenerationBatchIds.clear();
+  saveOpenGenerationBatchIds();
   resetResultFilters();
   state.batchNumber = 0;
   $("filePreview").classList.add("hidden");
@@ -1600,17 +1851,35 @@ async function reset() {
 taskTypeSelect.addEventListener("change", () => {
   renderDimensions();
   syncDefaultImageRatio();
-  if (state.blueprint) showToast("创作类型已改变，请重新生成提示词方案");
+  resetGeneratedDirectionsForSetupChange();
 });
-imageRatioSelect.addEventListener("change", () => { imageRatioOverridden = true; });
+dimensionList.addEventListener("change", resetGeneratedDirectionsForSetupChange);
+imageRatioSelect.addEventListener("change", () => { imageRatioOverridden = true; resetGeneratedDirectionsForSetupChange(); });
+$("sourcePrompt").addEventListener("input", renderBlueprintPreview);
+$("optionCount").addEventListener("change", resetGeneratedDirectionsForSetupChange);
+$("imageResolution").addEventListener("change", resetGeneratedDirectionsForSetupChange);
 $("generateBtn").addEventListener("click", generateDirections);
+$("editSetupBtn").addEventListener("click", openEditSetupDialog);
+$("cancelEditSetupBtn").addEventListener("click", closeEditSetupDialog);
+$("confirmEditSetupBtn").addEventListener("click", confirmEditSetup);
 $("submitSelectedBtn").addEventListener("click", submitSelected);
 $("selectAllBtn").addEventListener("click", selectAllPrompts);
 $("resetBtn").addEventListener("click", openResetDialog);
-$("apiSettingsBtn").addEventListener("click", () => { fillApiSettingsForm(state.apiSettings || {}); clearApiBaseUrlErrors(); showDialogAtTop(apiSettingsDialog); });
+$("apiSettingsBtn").addEventListener("click", () => {
+  fillApiSettingsForm(state.apiSettings || {});
+  clearApiBaseUrlErrors();
+  setApiTestStatus("text", "neutral", "未测试");
+  setApiTestStatus("image", "neutral", "未测试");
+  showDialogAtTop(apiSettingsDialog);
+  $("textBaseUrlInput").focus();
+});
 $("textBaseUrlInput").addEventListener("input", () => clearApiBaseUrlError("text"));
 $("imageBaseUrlInput").addEventListener("input", () => clearApiBaseUrlError("image"));
 $("saveApiSettingsBtn").addEventListener("click", saveBrowserApiSettings);
+$("testApiConnectionBtn").addEventListener("click", testApiConnections);
+[["text", ["textBaseUrlInput", "textApiKeyInput", "textModelInput"]], ["image", ["imageBaseUrlInput", "imageApiKeyInput", "imageModelInput"]]].forEach(([kind, ids]) => {
+  ids.forEach((id) => $(id).addEventListener("input", () => resetApiTestStatus(kind)));
+});
 $("clearApiSettingsBtn").addEventListener("click", openClearApiSettingsDialog);
 $("cancelClearApiSettingsBtn").addEventListener("click", cancelClearApiSettings);
 $("confirmClearApiSettingsBtn").addEventListener("click", clearBrowserApiSettings);
@@ -1625,6 +1894,7 @@ document.querySelectorAll("[data-dialog-close]").forEach((button) => {
     const dialog = button.closest("dialog");
     if (dialog === retryGenerationDialog) closeRetryGenerationDialog();
     else if (dialog === clearApiSettingsDialog) cancelClearApiSettings();
+    else if (dialog === editSetupDialog) closeEditSetupDialog();
     else dialog?.close();
   });
 });
@@ -1642,15 +1912,35 @@ $("confirmResetBtn").addEventListener("click", reset);
 $("referenceImage").addEventListener("change", (event) => handleFile(event.target.files?.[0]));
 $("removeFileBtn").addEventListener("click", removeReferenceImage);
 blueprintToggle.addEventListener("click", () => setBlueprintCollapsed(blueprintToggle.getAttribute("aria-expanded") === "true"));
-$("dropzone").addEventListener("dragover", (event) => { event.preventDefault(); $("dropzone").classList.add("is-dragging"); });
+$("dropzone").addEventListener("dragover", (event) => { event.preventDefault(); if (!isGeneratingDirections) $("dropzone").classList.add("is-dragging"); });
 $("dropzone").addEventListener("dragleave", () => $("dropzone").classList.remove("is-dragging"));
-$("dropzone").addEventListener("drop", (event) => { event.preventDefault(); $("dropzone").classList.remove("is-dragging"); handleFile(event.dataTransfer.files?.[0]); });
+$("dropzone").addEventListener("drop", (event) => { event.preventDefault(); $("dropzone").classList.remove("is-dragging"); if (!isGeneratingDirections) handleFile(event.dataTransfer.files?.[0]); });
 document.addEventListener("paste", handlePaste);
 promptList.addEventListener("change", handlePromptAction);
 promptList.addEventListener("click", handlePromptAction);
 generationFeed.addEventListener("click", handleGenerationAction);
+generationFeed.addEventListener("toggle", (event) => {
+  const batch = event.target.closest(".generation-batch");
+  if (!batch || event.target !== batch) return;
+  if (batch.open) openGenerationBatchIds.add(batch.dataset.batchId);
+  else openGenerationBatchIds.delete(batch.dataset.batchId);
+  saveOpenGenerationBatchIds();
+  if (batch.open) scheduleTextTooltipOverflowSync();
+}, true);
 generationFeed.addEventListener("load", (event) => {
   if (event.target instanceof HTMLImageElement) recordGeneratedImageDimensions(event.target);
+}, true);
+generationFeed.addEventListener("error", (event) => {
+  if (!(event.target instanceof HTMLImageElement)) return;
+  const frame = event.target.closest(".generation-image-frame");
+  const card = event.target.closest("[data-generation-id]");
+  if (!frame || !card) return;
+  frame.classList.add("is-image-error");
+  if (frame.querySelector("[data-action='recover-image']")) return;
+  const entry = state.generationEntries.find((item) => item.id === card.dataset.generationId);
+  if (!entry) return;
+  const recovery = frame.querySelector(".generation-image-recovery");
+  recovery?.insertAdjacentHTML("beforeend", `<span class="button button-quiet" role="button" tabindex="0" data-action="recover-image">下载恢复</span>`);
 }, true);
 $("resultSearchInput").addEventListener("input", (event) => { state.resultFilters.query = event.target.value; renderGenerationFeed(); });
 $("resultStatusFilter").addEventListener("change", (event) => { state.resultFilters.status = event.target.value; renderGenerationFeed(); });
@@ -1669,6 +1959,7 @@ document.querySelector(".stage-nav").addEventListener("click", (event) => {
   goToStage(button.dataset.stageTarget);
 });
 window.addEventListener("scroll", () => window.requestAnimationFrame(updateActiveStageFromScroll), { passive: true });
+window.addEventListener("resize", scheduleTextTooltipOverflowSync, { passive: true });
 window.matchMedia("(max-width: 600px)").addEventListener("change", () => {
   updateActiveStageFromScroll();
   syncBlueprintDisclosure();
