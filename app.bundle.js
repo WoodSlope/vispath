@@ -1629,8 +1629,7 @@ function handleGenerationAction(event) {
   if (button.dataset.action === "recover-image") {
     event.preventDefault();
     event.stopPropagation();
-    window.open(entry.imageUrl, "_blank", "noopener,noreferrer");
-    showToast("已在新标签页尝试打开原图，可继续保存或检查链接状态");
+    recoverGeneratedImage(entry);
     return;
   }
   if (button.dataset.action === "download-image") {
@@ -1683,6 +1682,22 @@ function handleGenerationAction(event) {
   }
   if (button.dataset.action === "retry") {
     openRetryGenerationDialog(entry);
+  }
+}
+
+async function recoverGeneratedImage(entry) {
+  try {
+    const response = await fetch(entry.imageUrl, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = createImageDownloadName(entry);
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    showToast("已恢复并开始下载图片");
+  } catch {
+    showToast("原图链接已失效或被浏览器拦截，建议重新生成");
   }
 }
 
