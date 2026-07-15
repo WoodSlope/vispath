@@ -197,6 +197,7 @@ const DB_VERSION = 1;
 const STORE_NAME = "workspace";
 const HISTORY_KEY = "generation-history";
 const API_SETTINGS_KEY = "api-settings";
+const IMAGE_CACHE_KEY_PREFIX = "generation-image-cache:";
 const HISTORY_SCHEMA_VERSION = 9;
 const ENTRY_FIELDS = [
   "id", "batchId", "batchNumber", "batchCreatedAt", "variantTitle", "changeSummary", "promptSnapshot",
@@ -281,6 +282,31 @@ function clearGenerationHistory() {
   return runTransaction("readwrite", (store) => store.delete(HISTORY_KEY));
 }
 
+function getGenerationImageCacheKey(entryId) {
+  const id = String(entryId || "").trim();
+  if (!id) throw new Error("生成记录 ID 无效");
+  return `${IMAGE_CACHE_KEY_PREFIX}${id}`;
+}
+
+function loadGenerationImageCache(entryId) {
+  return runTransaction("readonly", (store) => store.get(getGenerationImageCacheKey(entryId)));
+}
+
+function saveGenerationImageCache(entryId, imageUrl, blob) {
+  if (!(blob instanceof Blob) || blob.size === 0) throw new Error("图片缓存内容无效");
+  const record = {
+    entryId: String(entryId),
+    imageUrl: String(imageUrl || ""),
+    blob,
+    savedAt: new Date().toISOString()
+  };
+  return runTransaction("readwrite", (store) => store.put(record, getGenerationImageCacheKey(entryId)));
+}
+
+function deleteGenerationImageCache(entryId) {
+  return runTransaction("readwrite", (store) => store.delete(getGenerationImageCacheKey(entryId)));
+}
+
 function loadApiSettings() {
   return runTransaction("readonly", (store) => store.get(API_SETTINGS_KEY));
 }
@@ -350,6 +376,7 @@ let imageRatioOverridden = false;
 let pendingRetryEntryId = "";
 let historySaveQueue = Promise.resolve();
 let generationQueue = Promise.resolve();
+let imageCacheQueue = Promise.resolve();
 let textTooltipSyncFrame = 0;
 const IMAGE_CLEANUP_KEY = "ai-visual-direction-board-pending-image-cleanup";
 const OPEN_BATCHES_KEY = "vispath-open-generation-batches";
@@ -442,6 +469,39 @@ function createImageDownloadName(entry) {
     .replace(/^-|-$/g, "")
     .slice(0, 60);
   return `${title || "生成图片"}.png`;
+}
+
+async function fetchGeneratedImageBlob(imageUrl) {
+  const response = await fetch(imageUrl, { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const blob = await response.blob();
+  if (!blob.size) throw new Error("图片内容为空");
+  return blob;
+}
+
+function downloadGeneratedImageBlob(entry, blob) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = createImageDownloadName(entry);
+  link.rel = "noopener";
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+async function cacheGeneratedImage(entry) {
+  const imageUrl = entry.imageUrl;
+  const blob = await fetchGeneratedImageBlob(imageUrl);
+  const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
+  if (!currentEntry || currentEntry.status !== "ready" || currentEntry.imageUrl !== imageUrl) return;
+  await saveGenerationImageCache(currentEntry.id, imageUrl, blob);
+}
+
+function queueGeneratedImageCache(entry) {
+  imageCacheQueue = imageCacheQueue
+    .then(() => cacheGeneratedImage(entry))
+    .catch(() => {});
+  return imageCacheQueue;
 }
 
 function fillApiSettingsForm(settings = {}) {
@@ -935,6 +995,21 @@ function scheduleTextTooltipOverflowSync() {
   textTooltipSyncFrame = window.requestAnimationFrame(() => syncTextTooltipOverflow());
 }
 
+function renderGenerationActions(entry) {
+  const isReady = entry.status === "ready";
+  const isLoading = entry.status === "loading";
+  const canCopyPrompt = Boolean(entry.promptSnapshot);
+  const retryLabel = entry.status === "error" ? "重新尝试" : "重新生成";
+  return `
+    <div class="generation-actions" role="group" aria-label="${escapeHtml(entry.variantTitle)}操作">
+      <button class="button button-primary" type="button" data-action="continue" title="${isReady ? "基于当前结果继续细化" : "图片生成完成后可用"}" ${isReady ? "" : "disabled"}>基于此结果细化</button>
+      <button class="button" type="button" data-action="download-image" title="${isReady ? "保存生成图片到本地" : "图片生成完成后可用"}" ${isReady ? "" : "disabled"}>保存本地</button>
+      <button class="button" type="button" data-action="copy-generation" title="${canCopyPrompt ? "复制完整提示词" : "当前记录缺少提示词"}" ${canCopyPrompt ? "" : "disabled"}>复制提示词</button>
+      <button class="button" type="button" data-action="retry" title="${isLoading ? "当前图片生成中" : retryLabel}" ${isLoading ? "disabled" : ""}>${retryLabel}</button>
+    </div>
+  `;
+}
+
 function renderGenerationFeed({ openBatchId = "" } = {}) {
   const allBatches = groupGenerationEntries();
   if (generationHistoryLoaded) pruneOpenGenerationBatchIds(allBatches);
@@ -995,10 +1070,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
           <div class="prompt-preview" tabindex="0" role="region" aria-label="完整提示词">${escapeHtml(entry.promptSnapshot)}</div>
         </div>
         <div class="generation-card-summary"><strong>本轮变化</strong><span class="generation-change-tooltip text-tooltip-trigger"><span class="generation-change-text" data-tooltip-overflow-target="multiline">${escapeHtml(entry.changeSummary)}</span><span class="generation-change-tooltip-content text-tooltip" id="generation-change-${escapeHtml(entry.id)}" role="tooltip">${escapeHtml(entry.changeSummary)}</span></span></div>
-        <div class="generation-actions${entry.status === "error" ? " is-error" : ""}">
-          ${entry.status === "ready" ? `<button class="button button-primary" type="button" data-action="continue">基于此结果细化</button><button class="button" type="button" data-action="download-image">保存本地</button>` : ""}
-          ${entry.status === "error" ? `<button class="button button-primary" type="button" data-action="retry">重新尝试</button><button class="button" type="button" data-action="copy-generation">复制提示词</button>` : `<button class="button" type="button" data-action="copy-generation">复制提示词</button><button class="button" type="button" data-action="retry" ${entry.status === "loading" ? "disabled" : ""}>${entry.status === "loading" ? "生成中" : "重新生成"}</button>`}
-        </div>
+        ${renderGenerationActions(entry)}
       </div>
     </article>
         `).join("")}
@@ -1186,6 +1258,7 @@ async function runGeneration(entry) {
   entry.completedAt = new Date().toISOString();
   renderGenerationFeed();
   await persistGenerationHistory();
+  if (entry.status === "ready" && entry.imageUrl) queueGeneratedImageCache(entry);
   showToast(entry.status === "ready" ? "真实图片已生成" : "生成未完成，请先核对账单再决定是否重试");
 }
 
@@ -1263,6 +1336,7 @@ function confirmRetryGeneration() {
   const entry = state.generationEntries.find((item) => item.id === pendingRetryEntryId);
   closeRetryGenerationDialog();
   if (!entry) return;
+  deleteGenerationImageCache(entry.id).catch(() => {});
   entry.taskId = "";
   entry.taskStatus = "";
   entry.taskProgress = "";
@@ -1295,7 +1369,11 @@ function persistGenerationHistory() {
 function readPendingImageCleanup() {
   try {
     const items = JSON.parse(localStorage.getItem(IMAGE_CLEANUP_KEY) || "[]");
-    return Array.isArray(items) ? items.filter((item) => item?.entryId && /^\/generated\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i.test(item.imageUrl)) : [];
+    return Array.isArray(items)
+      ? items
+        .filter((item) => typeof item?.entryId === "string" && item.entryId && Number.isFinite(Number(item.deleteAfter)))
+        .map((item) => ({ entryId: item.entryId, deleteAfter: Number(item.deleteAfter) }))
+      : [];
   } catch {
     return [];
   }
@@ -1314,6 +1392,7 @@ function removePendingImageCleanup(entryId) {
 
 async function runPendingImageCleanup(item) {
   removePendingImageCleanup(item.entryId);
+  await deleteGenerationImageCache(item.entryId).catch(() => {});
 }
 
 function armPendingImageCleanup(item) {
@@ -1323,9 +1402,8 @@ function armPendingImageCleanup(item) {
 }
 
 function queueGeneratedImageCleanup(entry, delay = IMAGE_CLEANUP_DELAY) {
-  if (!/^\/generated\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i.test(entry.imageUrl || "")) return;
-  if (state.generationEntries.some((item) => item.id !== entry.id && item.imageUrl === entry.imageUrl)) return;
-  const item = { entryId: entry.id, imageUrl: entry.imageUrl, deleteAfter: Date.now() + delay };
+  if (!entry?.id || !entry.imageUrl) return;
+  const item = { entryId: entry.id, deleteAfter: Date.now() + delay };
   const items = readPendingImageCleanup().filter((pending) => pending.entryId !== entry.id);
   items.push(item);
   writePendingImageCleanup(items);
@@ -1687,17 +1765,21 @@ function handleGenerationAction(event) {
 
 async function recoverGeneratedImage(entry) {
   try {
-    const response = await fetch(entry.imageUrl, { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const objectUrl = URL.createObjectURL(await response.blob());
-    const link = document.createElement("a");
-    link.href = objectUrl;
-    link.download = createImageDownloadName(entry);
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    const cached = await loadGenerationImageCache(entry.id).catch(() => null);
+    const blob = cached?.imageUrl === entry.imageUrl && cached.blob instanceof Blob
+      ? cached.blob
+      : await fetchGeneratedImageBlob(entry.imageUrl);
+    const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
+    if ((!cached || cached.imageUrl !== entry.imageUrl) && currentEntry?.status === "ready" && currentEntry.imageUrl === entry.imageUrl) {
+      await saveGenerationImageCache(currentEntry.id, currentEntry.imageUrl, blob).catch(() => {});
+    }
+    downloadGeneratedImageBlob(entry, blob);
     showToast("已恢复并开始下载图片");
   } catch {
-    showToast("原图链接已失效或被浏览器拦截，建议重新生成");
+    showToast("原图链接已失效或被浏览器拦截", {
+      label: "重新生成",
+      onClick: () => openRetryGenerationDialog(entry)
+    });
   }
 }
 
@@ -1836,7 +1918,7 @@ async function clearBrowserApiSettings() {
 }
 
 async function reset() {
-  const removedEntries = [...new Map(state.generationEntries.filter((entry) => entry.imageUrl).map((entry) => [entry.imageUrl, entry])).values()];
+  const removedEntries = state.generationEntries.filter((entry) => entry.imageUrl);
   $("sourcePrompt").value = "";
   $("referenceImage").value = "";
   state.referenceImage = null;
