@@ -1626,13 +1626,20 @@ function handleGenerationAction(event) {
     openImagePreview(entry);
     return;
   }
-  if (button.dataset.action === "download-image" || button.dataset.action === "recover-image") {
+  if (button.dataset.action === "recover-image") {
+    event.preventDefault();
+    event.stopPropagation();
+    window.open(entry.imageUrl, "_blank", "noopener,noreferrer");
+    showToast("已在新标签页尝试打开原图，可继续保存或检查链接状态");
+    return;
+  }
+  if (button.dataset.action === "download-image") {
     const link = document.createElement("a");
     link.href = entry.imageUrl;
     link.download = createImageDownloadName(entry);
     link.rel = "noopener";
     link.click();
-    showToast(button.dataset.action === "recover-image" ? "已尝试下载恢复图片" : "已开始下载图片");
+    showToast("已开始下载图片");
     return;
   }
   if (button.dataset.action === "toggle-favorite") {
@@ -1919,6 +1926,12 @@ document.addEventListener("paste", handlePaste);
 promptList.addEventListener("change", handlePromptAction);
 promptList.addEventListener("click", handlePromptAction);
 generationFeed.addEventListener("click", handleGenerationAction);
+generationFeed.addEventListener("keydown", (event) => {
+  const recovery = event.target.closest("[data-action='recover-image']");
+  if (!recovery || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  recovery.click();
+});
 generationFeed.addEventListener("toggle", (event) => {
   const batch = event.target.closest(".generation-batch");
   if (!batch || event.target !== batch) return;
