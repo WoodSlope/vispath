@@ -82,7 +82,7 @@ const EXPLORATION_DIMENSIONS = [
     name: "设计风格",
     description: "改变整体视觉语言，不改变主体、用途和信息结构",
     applicableTaskTypeIds: ["poster", "landing_page", "dashboard"],
-    defaultOptions: ["极简编辑感", "复古印刷感", "未来科技感", "生活方式摄影感"],
+    defaultOptions: ["极简编辑感", "复古印刷感", "未来科技感", "生活方式摄影感", "瑞士网格感", "实验拼贴感"],
     lockFields: ["subject", "intent", "technical", "textLayout"]
   },
   {
@@ -90,7 +90,7 @@ const EXPLORATION_DIMENSIONS = [
     name: "卡通 / 角色风格",
     description: "改变角色的绘制、渲染或卡通表达方式",
     applicableTaskTypeIds: ["poster", "character_ip"],
-    defaultOptions: ["2D 扁平插画", "3D 潮玩", "黏土软质感", "绘本卡通"],
+    defaultOptions: ["2D 扁平插画", "3D 潮玩", "黏土软质感", "绘本卡通", "几何吉祥物", "手绘线稿"],
     lockFields: ["subject", "character_proportion", "composition", "technical"]
   },
   {
@@ -98,7 +98,7 @@ const EXPLORATION_DIMENSIONS = [
     name: "色彩风格",
     description: "改变色彩系统和情绪，不改变主体与构图",
     applicableTaskTypeIds: ["poster", "landing_page", "dashboard", "character_ip"],
-    defaultOptions: ["低饱和奶油色", "高对比黑白", "暖橙蓝", "冷色霓虹"],
+    defaultOptions: ["低饱和奶油色", "高对比黑白", "暖橙蓝", "冷色霓虹", "单色品牌色", "柔和粉彩"],
     lockFields: ["subject", "composition", "layout", "technical"]
   },
   {
@@ -106,7 +106,7 @@ const EXPLORATION_DIMENSIONS = [
     name: "版式风格",
     description: "改变信息和主体的页面组织方式",
     applicableTaskTypeIds: ["poster", "landing_page", "dashboard"],
-    defaultOptions: ["大标题单主体", "杂志网格", "左右分栏", "卡片化布局"],
+    defaultOptions: ["大标题单主体", "杂志网格", "左右分栏", "卡片化布局", "非对称斜向", "居中对称"],
     lockFields: ["subject", "visualLanguage", "technical"]
   },
   {
@@ -114,7 +114,7 @@ const EXPLORATION_DIMENSIONS = [
     name: "构图与镜头",
     description: "改变主体距离、视角、空间轴线和镜头关系",
     applicableTaskTypeIds: ["poster", "landing_page", "character_ip"],
-    defaultOptions: ["主体特写", "平视中景", "俯视构图", "开放式偏轴"],
+    defaultOptions: ["主体特写", "平视中景", "俯视构图", "开放式偏轴", "低机位仰视", "广角环境构图"],
     lockFields: ["subject", "visualLanguage", "technical"]
   },
   {
@@ -122,7 +122,7 @@ const EXPLORATION_DIMENSIONS = [
     name: "材质与质感",
     description: "改变表面、渲染和触感表达",
     applicableTaskTypeIds: ["poster", "character_ip"],
-    defaultOptions: ["纸张印刷", "金属玻璃", "毛绒软质", "胶片颗粒"],
+    defaultOptions: ["纸张印刷", "金属玻璃", "毛绒软质", "胶片颗粒", "半透明果冻", "陶瓷黏土"],
     lockFields: ["subject", "composition", "technical"]
   },
   {
@@ -130,7 +130,7 @@ const EXPLORATION_DIMENSIONS = [
     name: "信息密度",
     description: "改变画面或界面的信息量与留白关系",
     applicableTaskTypeIds: ["poster", "landing_page", "dashboard"],
-    defaultOptions: ["极简留白", "平衡信息", "高密度信息", "模块化分区"],
+    defaultOptions: ["极简留白", "平衡信息", "高密度信息", "模块化分区", "大字报聚焦", "目录式标注"],
     lockFields: ["subject", "color_style", "technical"]
   },
   {
@@ -138,7 +138,7 @@ const EXPLORATION_DIMENSIONS = [
     name: "品牌气质",
     description: "改变品牌表达的性格和情绪",
     applicableTaskTypeIds: ["poster", "landing_page", "dashboard", "character_ip"],
-    defaultOptions: ["高端克制", "亲和轻松", "专业理性", "年轻潮流"],
+    defaultOptions: ["高端克制", "亲和轻松", "专业理性", "年轻潮流", "先锋实验", "自然温暖"],
     lockFields: ["subject", "technical"]
   },
   {
@@ -146,7 +146,7 @@ const EXPLORATION_DIMENSIONS = [
     name: "数据层级",
     description: "改变 Dashboard 中关键指标、趋势和明细的视觉优先级",
     applicableTaskTypeIds: ["dashboard"],
-    defaultOptions: ["核心指标优先", "趋势分析优先", "异常监控优先", "明细操作优先"],
+    defaultOptions: ["核心指标优先", "趋势分析优先", "异常监控优先", "明细操作优先", "全局决策优先", "任务流程优先"],
     lockFields: ["subject", "color_style", "technical"]
   },
   {
@@ -154,7 +154,7 @@ const EXPLORATION_DIMENSIONS = [
     name: "角色比例",
     description: "改变角色头身、五官和年龄感关系",
     applicableTaskTypeIds: ["character_ip"],
-    defaultOptions: ["2 头身", "3 头身", "5 头身", "7 头身"],
+    defaultOptions: ["2 头身", "3 头身", "5 头身", "7 头身", "大头萌系", "修长时装比例"],
     lockFields: ["subject", "character_style", "composition", "technical"]
   }
 ];
@@ -198,10 +198,12 @@ const STORE_NAME = "workspace";
 const HISTORY_KEY = "generation-history";
 const API_SETTINGS_KEY = "api-settings";
 const IMAGE_CACHE_KEY_PREFIX = "generation-image-cache:";
-const HISTORY_SCHEMA_VERSION = 9;
+const HISTORY_SCHEMA_VERSION = 10;
 const ENTRY_FIELDS = [
   "id", "batchId", "batchNumber", "batchCreatedAt", "variantTitle", "changeSummary", "promptSnapshot",
-  "artClass", "ratio", "resolution", "generationMode", "responseFormat", "actualResponseFormat", "createdAt", "startedAt", "completedAt", "status", "imageUrl", "imageWidth", "imageHeight", "errorMessage", "requestId", "taskId", "taskStatus", "taskProgress", "favorite"
+  "explorationDimensionId", "explorationDimensionName", "explorationOption", "artClass", "ratio", "resolution",
+  "generationMode", "responseFormat", "actualResponseFormat", "createdAt", "startedAt", "completedAt", "status",
+  "imageUrl", "imageWidth", "imageHeight", "errorMessage", "requestId", "taskId", "taskStatus", "taskProgress", "favorite"
 ];
 
 function inferActualResponseFormat(imageUrl) {
@@ -642,6 +644,10 @@ function selectedDimension() {
   return EXPLORATION_DIMENSIONS.find((item) => item.id === id) || getAvailableDimensions()[0];
 }
 
+function getExplorationOptions(dimension, optionCount) {
+  return dimension.defaultOptions.slice(0, optionCount);
+}
+
 function renderTaskTypes() {
   taskTypeSelect.innerHTML = TASK_TYPES.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join("");
   taskTypeSelect.value = "poster";
@@ -741,6 +747,7 @@ function syncBlueprintDisclosure() {
 
 function renderPromptCards() {
   const variants = state.blueprint?.variants || [];
+  const dimensionName = state.blueprint?.exploration?.dimensionName || selectedDimension().name;
   $("emptyBoard").classList.toggle("hidden", variants.length > 0);
   $("resultCount").textContent = variants.length;
   $("selectAllBtn").disabled = variants.length === 0;
@@ -756,7 +763,7 @@ function renderPromptCards() {
           <span><small>方案 ${String(index + 1).padStart(2, "0")}</small><strong>${escapeHtml(variant.title)}</strong></span>
         </label>
         <div class="prompt-card-specs">
-          <p class="changed-line"><strong>本轮变化</strong><span>${escapeHtml(variant.changeSummary)}</span></p>
+          <p class="changed-line"><strong>${escapeHtml(dimensionName)}</strong><span><span class="prompt-exploration-option">${escapeHtml(variant.explorationOption || variant.title)}</span><span class="prompt-change-summary">${escapeHtml(variant.changeSummary)}</span></span></p>
           <p class="locked-line"><strong>固定条件</strong><span>主体、场景、比例、信息区域</span></p>
         </div>
         <div class="prompt-card-actions">
@@ -797,9 +804,16 @@ function createLocalPromptPreview() {
       textLayout: "保留标题与活动信息区域",
       technical: { ratio: "3:4" }
     },
+    exploration: {
+      dimensionIds: ["visual_style"],
+      dimensionName: "设计风格",
+      optionCount: previews.length,
+      selectedOptions: previews.map((item) => item.title)
+    },
     variants: previews.map((item, index) => ({
       id: `local_preview_${index + 1}`,
       ...item,
+      explorationOption: item.title,
       artClass: ["art-editorial", "art-retro", "art-lifestyle"][index],
       generation: { ratio: "3:4", resolution: "1K", imageCount: 1 }
     }))
@@ -884,7 +898,13 @@ function groupGenerationEntries(entries = state.generationEntries) {
   const groups = new Map();
   entries.forEach((entry) => {
     const batchId = entry.batchId || `legacy_batch_${entry.batchNumber || "00"}`;
-    if (!groups.has(batchId)) groups.set(batchId, { id: batchId, number: entry.batchNumber || "00", createdAt: entry.batchCreatedAt || entry.createdAt || "", entries: [] });
+    if (!groups.has(batchId)) groups.set(batchId, {
+      id: batchId,
+      number: entry.batchNumber || "00",
+      createdAt: entry.batchCreatedAt || entry.createdAt || "",
+      explorationDimensionName: entry.explorationDimensionName || "",
+      entries: []
+    });
     groups.get(batchId).entries.push(entry);
   });
   return [...groups.values()];
@@ -896,7 +916,7 @@ function filterGenerationEntries() {
     const batchId = entry.batchId || `legacy_batch_${entry.batchNumber || "00"}`;
     const matchesBatch = state.resultFilters.batchId === "all" || batchId === state.resultFilters.batchId;
     const matchesStatus = state.resultFilters.status === "all" || entry.status === state.resultFilters.status;
-    const searchable = `${entry.variantTitle || ""} ${entry.changeSummary || ""} ${entry.promptSnapshot || ""}`.toLocaleLowerCase("zh-CN");
+    const searchable = `${entry.variantTitle || ""} ${entry.explorationDimensionName || ""} ${entry.explorationOption || ""} ${entry.changeSummary || ""} ${entry.promptSnapshot || ""}`.toLocaleLowerCase("zh-CN");
     return matchesBatch && matchesStatus && (!query || searchable.includes(query));
   });
 }
@@ -905,7 +925,7 @@ function syncBatchFilterOptions(batches) {
   const select = $("resultBatchFilter");
   const availableIds = new Set(batches.map((batch) => batch.id));
   if (state.resultFilters.batchId !== "all" && !availableIds.has(state.resultFilters.batchId)) state.resultFilters.batchId = "all";
-  select.innerHTML = `<option value="all">全部批次</option>${batches.map((batch) => `<option value="${escapeHtml(batch.id)}">批次 ${escapeHtml(batch.number)} · ${escapeHtml(formatBatchTime(batch.createdAt))}</option>`).join("")}`;
+  select.innerHTML = `<option value="all">全部批次</option>${batches.map((batch) => `<option value="${escapeHtml(batch.id)}">批次 ${escapeHtml(batch.number)}${batch.explorationDimensionName ? ` · ${escapeHtml(batch.explorationDimensionName)}` : ""} · ${escapeHtml(formatBatchTime(batch.createdAt))}</option>`).join("")}`;
   select.value = state.resultFilters.batchId;
 }
 
@@ -1002,10 +1022,10 @@ function renderGenerationActions(entry) {
   const retryLabel = entry.status === "error" ? "重新尝试" : "重新生成";
   return `
     <div class="generation-actions" role="group" aria-label="${escapeHtml(entry.variantTitle)}操作">
-      <button class="button button-primary" type="button" data-action="continue" title="${isReady ? "基于当前结果继续细化" : "图片生成完成后可用"}" ${isReady ? "" : "disabled"}>基于此结果细化</button>
+      <button class="button${isReady ? " button-primary" : ""}" type="button" data-action="continue" title="${isReady ? "基于当前结果继续细化" : "图片生成完成后可用"}" ${isReady ? "" : "disabled"}>基于此结果细化</button>
       <button class="button" type="button" data-action="download-image" title="${isReady ? "保存生成图片到本地" : "图片生成完成后可用"}" ${isReady ? "" : "disabled"}>保存本地</button>
       <button class="button" type="button" data-action="copy-generation" title="${canCopyPrompt ? "复制完整提示词" : "当前记录缺少提示词"}" ${canCopyPrompt ? "" : "disabled"}>复制提示词</button>
-      <button class="button" type="button" data-action="retry" title="${isLoading ? "当前图片生成中" : retryLabel}" ${isLoading ? "disabled" : ""}>${retryLabel}</button>
+      <button class="button${entry.status === "error" ? " button-primary" : ""}" type="button" data-action="retry" title="${isLoading ? "当前图片生成中" : retryLabel}" ${isLoading ? "disabled" : ""}>${retryLabel}</button>
     </div>
   `;
 }
@@ -1043,7 +1063,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
     return `
     <details class="generation-batch" data-batch-id="${escapeHtml(batch.id)}" ${openGenerationBatchIds.has(batch.id) ? "open" : ""}>
       <summary class="generation-batch-summary">
-        <span><strong>批次 ${escapeHtml(batch.number)}</strong><small>${escapeHtml(formatBatchTime(batch.createdAt))} · ${batch.entries.length} 条结果<span class="generation-batch-stats">${statusSummary}</span></small></span>
+        <span><strong class="generation-batch-title">批次 ${escapeHtml(batch.number)}${batch.explorationDimensionName ? `<span class="generation-batch-variable">${escapeHtml(batch.explorationDimensionName)}</span>` : ""}</strong><small>${escapeHtml(formatBatchTime(batch.createdAt))} · ${batch.entries.length} 条结果<span class="generation-batch-stats">${statusSummary}</span></small></span>
       </summary>
       <div class="generation-batch-meta">
         <button class="button button-quiet generation-batch-compare" type="button" data-action="compare-batch" aria-label="对比批次 ${escapeHtml(batch.number)} 的完成结果" title="${comparableEntries.length >= 2 ? `对比 ${comparableEntries.length} 条完成结果` : "至少需要两条完成图片"}" ${comparableEntries.length < 2 ? "disabled" : ""}>对比</button>
@@ -1064,6 +1084,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
       </div>
       <div class="generation-body">
         <div class="generation-card-meta"><span>请求 ${escapeHtml(entry.resolution || "1K")} · ${escapeHtml(entry.ratio || "未设比例")} · ${entry.generationMode === "sync" ? "同步" : "异步"}${entry.actualResponseFormat ? ` · 实际返回 ${entry.actualResponseFormat === "b64_json" ? "Base64" : "URL"}` : ""}</span><span>${entry.status !== "loading" && entry.startedAt && entry.completedAt ? `耗时 ${escapeHtml(formatGenerationElapsed(entry.startedAt, entry.completedAt))}` : "等待生成结果"}</span></div>
+        ${entry.explorationDimensionName ? `<div class="generation-exploration"><span class="generation-exploration-label">${escapeHtml(entry.explorationDimensionName)}</span><strong class="generation-exploration-value">${escapeHtml(entry.explorationOption || "未记录具体方向")}</strong></div>` : ""}
         ${entry.imageUrl ? `<div class="generation-image-diagnostics">${renderActualImageSize(entry)}</div>` : entry.status === "error" ? `<div class="generation-image-diagnostics"><span class="generation-error-tooltip-trigger text-tooltip-trigger"><span class="generation-error-label">失败原因</span><span class="generation-error-summary" data-tooltip-overflow-target>${escapeHtml(entry.errorMessage || "图片生成失败，请稍后重试")}</span><span class="generation-error-tooltip text-tooltip" id="generation-error-${escapeHtml(entry.id)}" role="tooltip"><strong>失败原因</strong><span>${escapeHtml(entry.errorMessage || "图片生成失败，请稍后重试")}</span>${entry.requestId ? `<small>Request ID：${escapeHtml(entry.requestId)}</small>` : ""}</span></span></div>` : ""}
         ${entry.status === "loading" ? `<div class="generation-progress" role="status"><span class="generation-spinner" aria-hidden="true"></span><span><strong>${escapeHtml(entry.taskStatus === "queued" ? "任务排队中" : entry.taskStatus ? "服务端生成中" : "正在提交任务")}${entry.taskProgress ? ` · ${escapeHtml(entry.taskProgress)}` : ""}</strong><small>已等待 <span class="generation-elapsed" data-started-at="${escapeHtml(entry.startedAt || entry.batchCreatedAt)}">${formatGenerationElapsed(entry.startedAt || entry.batchCreatedAt)}</span>${entry.taskId ? `<span class="generation-task-id">task_id：${escapeHtml(entry.taskId)}</span>` : ""}</small></span></div>` : ""}
         <div class="generation-prompt-snapshot">
@@ -1085,6 +1106,11 @@ function shouldSimulateFailure(prompt) {
   return /模拟失败|故意失败/.test(prompt);
 }
 
+function buildExplorationPrompt(rawPrompt, input, explorationOption, changeSummary) {
+  const basePrompt = String(rawPrompt || input.prompt || "根据参考图生成完整视觉方案").trim();
+  return `本轮必须执行的视觉变化：仅调整${input.dimensionName}。本方案目标：${explorationOption}。具体表现：${changeSummary}。原始提示中与${input.dimensionName}相关且冲突的描述，以本方案目标为准；主体、用途、画幅比例和信息区域保持不变。\n\n${basePrompt}`;
+}
+
 function normalizeDirectBlueprint(value, input) {
   const locked = value?.locked || {};
   const variants = Array.isArray(value?.variants) ? value.variants.slice(0, input.optionCount) : [];
@@ -1100,17 +1126,32 @@ function normalizeDirectBlueprint(value, input) {
       palette: String(locked.palette || ""), lighting: String(locked.lighting || ""), material: String(locked.material || ""),
       textLayout: String(locked.textLayout || "保留可后期排版区域"), technical: { ratio: input.ratio }, constraints: Array.isArray(locked.constraints) ? locked.constraints : []
     },
-    exploration: { dimensionIds: [input.dimensionId], optionCount: input.optionCount, selectedOptions: variants.map((item) => String(item.title || "未命名方向")) },
-    variants: variants.map((item, index) => ({
-      id: `variant_${Date.now()}_${index + 1}`, title: String(item.title || `方向 ${index + 1}`),
-      changed: { [input.dimensionId]: String(item.title || "") }, changeSummary: String(item.changeSummary || `只改变${input.dimensionName}`),
-      prompt: String(item.prompt || ""), generation: { ratio: input.ratio, resolution: input.resolution, imageCount: 1 }, artClass: ["art-editorial", "art-retro", "art-future", "art-lifestyle"][index % 4]
-    }))
+    exploration: {
+      dimensionIds: [input.dimensionId],
+      dimensionName: input.dimensionName,
+      optionCount: input.optionCount,
+      selectedOptions: input.explorationOptions
+    },
+    variants: variants.map((item, index) => {
+      const explorationOption = input.explorationOptions[index];
+      const changeSummary = String(item.changeSummary || `将${input.dimensionName}调整为${explorationOption}`);
+      return {
+        id: `variant_${Date.now()}_${index + 1}`,
+        title: String(item.title || explorationOption || `方向 ${index + 1}`),
+        explorationOption,
+        changed: { [input.dimensionId]: explorationOption },
+        changeSummary,
+        prompt: buildExplorationPrompt(item.prompt, input, explorationOption, changeSummary),
+        generation: { ratio: input.ratio, resolution: input.resolution, imageCount: 1 },
+        artClass: ["art-editorial", "art-retro", "art-future", "art-lifestyle"][index % 4]
+      };
+    })
   };
 }
 
 async function requestDirectBlueprint(input) {
-  const system = `你是视觉提示词方案设计器。只输出 JSON。围绕“${input.dimensionName}”生成恰好 ${input.optionCount} 套方案，保持主体、用途、比例和信息区域不变。输出 locked 和 variants，variants 每项包含 title、changeSummary、prompt。`;
+  const targetList = input.explorationOptions.map((option, index) => `${index + 1}. ${option}`).join("；");
+  const system = `你是视觉提示词方案设计器，只输出 JSON。围绕“${input.dimensionName}”生成恰好 ${input.optionCount} 套差异明显的方案，并按顺序一一对应这些目标：${targetList}。原始提示中与“${input.dimensionName}”有关的描述属于本轮可覆盖变量；主体、用途、画幅比例和信息区域必须保持不变。每个 variant 必须包含 title、targetOption、changeSummary、prompt；targetOption 必须逐字使用对应目标；prompt 必须是可独立用于生图的完整提示词，明确写出该目标的具体视觉表现，不得照抄原始提示，不得让两套 prompt 相同或只改标题。`;
   const serializedInput = JSON.stringify({ ...input, referenceImage: undefined, hasReferenceImage: Boolean(input.referenceImage) });
   const responseInput = input.referenceImage ? [{
     role: "user",
@@ -1551,7 +1592,20 @@ async function generateDirections() {
   try {
     const type = getTaskType();
     const dimension = selectedDimension();
-    const input = { prompt: $("sourcePrompt").value.trim(), taskTypeId: type.id, taskTypeName: type.name, dimensionId: dimension.id, dimensionName: dimension.name, optionCount: Number($("optionCount").value), ratio: imageRatioSelect.value, resolution: $("imageResolution").value, referenceImage: state.referenceImageData };
+    const optionCount = Number($("optionCount").value);
+    const input = {
+      prompt: $("sourcePrompt").value.trim(),
+      taskTypeId: type.id,
+      taskTypeName: type.name,
+      dimensionId: dimension.id,
+      dimensionName: dimension.name,
+      dimensionDescription: dimension.description,
+      explorationOptions: getExplorationOptions(dimension, optionCount),
+      optionCount,
+      ratio: imageRatioSelect.value,
+      resolution: $("imageResolution").value,
+      referenceImage: state.referenceImageData
+    };
     if (!hasBrowserTextApi()) throw new Error("请先在右上角 API 配置中填写文本服务");
     state.blueprint = await requestDirectBlueprint(input);
     state.selectedVariantIds.clear();
@@ -1623,6 +1677,9 @@ function submitSelected() {
     variantTitle: variant.title,
     changeSummary: variant.changeSummary,
     promptSnapshot: variant.prompt,
+    explorationDimensionId: state.blueprint.exploration.dimensionIds[0],
+    explorationDimensionName: state.blueprint.exploration.dimensionName,
+    explorationOption: variant.explorationOption,
     artClass: variant.artClass,
     ratio: variant.generation.ratio,
     resolution: variant.generation.resolution,
