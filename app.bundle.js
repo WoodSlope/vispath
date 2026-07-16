@@ -198,12 +198,12 @@ const STORE_NAME = "workspace";
 const HISTORY_KEY = "generation-history";
 const API_SETTINGS_KEY = "api-settings";
 const IMAGE_CACHE_KEY_PREFIX = "generation-image-cache:";
-const HISTORY_SCHEMA_VERSION = 12;
+const HISTORY_SCHEMA_VERSION = 13;
 const ENTRY_FIELDS = [
   "id", "batchId", "batchNumber", "batchCreatedAt", "variantTitle", "changeSummary", "promptSnapshot",
   "explorationDimensionId", "explorationDimensionName", "explorationOption", "artClass", "ratio", "resolution",
   "generationMode", "responseFormat", "actualResponseFormat", "createdAt", "startedAt", "completedAt", "status",
-  "imageUrl", "originalImageUrl", "imageCacheKey", "imageCacheStatus", "imageCacheErrorCode", "imageCacheErrorMessage", "imageMimeType", "imageByteSize",
+  "imageUrl", "originalImageUrl", "imageCacheKey", "imageCacheBackend", "imageCacheStatus", "imageCacheErrorCode", "imageCacheErrorMessage", "imageMimeType", "imageByteSize",
   "imageWidth", "imageHeight", "errorMessage", "requestId", "taskId", "taskStatus", "taskProgress", "favorite"
 ];
 
@@ -223,6 +223,7 @@ function sanitizeEntry(entry) {
   clean.status = ["loading", "ready", "error"].includes(clean.status) ? clean.status : "error";
   if (typeof clean.imageUrl !== "string" || clean.imageUrl.startsWith("blob:")) clean.imageUrl = "";
   clean.originalImageUrl = typeof clean.originalImageUrl === "string" ? clean.originalImageUrl : "";
+  clean.imageCacheBackend = ["blob", "opaque"].includes(clean.imageCacheBackend) ? clean.imageCacheBackend : "";
   clean.imageCacheStatus = ["pending", "ready", "error"].includes(clean.imageCacheStatus) ? clean.imageCacheStatus : "";
   clean.imageCacheErrorCode = typeof clean.imageCacheErrorCode === "string" ? clean.imageCacheErrorCode : "";
   clean.imageCacheErrorMessage = typeof clean.imageCacheErrorMessage === "string" ? clean.imageCacheErrorMessage : "";
@@ -415,11 +416,15 @@ let historyImageCacheQueue = Promise.resolve();
 let textTooltipSyncFrame = 0;
 const IMAGE_CLEANUP_KEY = "ai-visual-direction-board-pending-image-cleanup";
 const OPEN_BATCHES_KEY = "vispath-open-generation-batches";
+const OPAQUE_IMAGE_CACHE_NAME = "vispath-generated-images-v1";
 const IMAGE_CLEANUP_DELAY = 5500;
 const IMAGE_POLL_INTERVAL = 3000;
 const IMAGE_RETRY_DELAYS = [5000, 15000];
 const imageCleanupTimers = new Map();
+const pendingOpaqueImageCleanupUrls = new Map();
 const generatedImageObjectUrls = new Map();
+let generatedImageServiceWorkerRegistration = null;
+let generatedImageServiceWorkerPromise = null;
 let isGeneratingDirections = false;
 let openGenerationBatchIds = readOpenGenerationBatchIds();
 let hasSavedBatchDisclosure = localStorage.getItem(OPEN_BATCHES_KEY) !== null;
@@ -501,13 +506,13 @@ function renderGeneratedImageCacheStatus(entry) {
   if (entry.imageCacheStatus !== "error") return "";
   const remoteUnavailable = entry.imageCacheErrorCode === "remote_unavailable";
   const title = remoteUnavailable ? "临时图片链接无法长期保存" : "浏览器本地缓存写入失败";
-  const message = entry.imageCacheErrorMessage || (remoteUnavailable
+  const message = remoteUnavailable
     ? "当前地址已失效或无法写入浏览器缓存，可重新生成或查看恢复选项。"
-    : "当前图片仍可使用，恢复浏览器存储后可重新缓存。");
+    : entry.imageCacheErrorMessage || "当前图片仍可使用，恢复浏览器存储后可重新缓存。";
   const action = remoteUnavailable
     ? '<button class="button button-quiet" type="button" data-action="open-image-recovery">恢复选项</button>'
     : '<button class="button button-quiet" type="button" data-action="retry-image-cache">重新缓存</button>';
-  return `<span class="generation-image-cache-error" role="status"><strong>${title}</strong><span>${escapeHtml(message)}</span><span class="generation-image-cache-error-actions">${action}</span></span>`;
+  return `<span class="generation-image-cache-error" role="status"><strong>${title}</strong><span class="generation-image-cache-error-message">${escapeHtml(message)}</span><span class="generation-image-cache-error-actions">${action}</span></span>`;
 }
 
 function isGeneratedImageMissing(entry) {
@@ -536,6 +541,81 @@ async function fetchGeneratedImageBlob(imageUrl) {
     error.imageCacheErrorCode = "remote_unavailable";
     throw error;
   }
+}
+
+function canUseOpaqueImageCache() {
+  return ["http:", "https:"].includes(window.location.protocol)
+    && "serviceWorker" in navigator
+    && "caches" in window;
+}
+
+function registerGeneratedImageServiceWorker() {
+  if (!canUseOpaqueImageCache()) return null;
+  if (!generatedImageServiceWorkerPromise) {
+    generatedImageServiceWorkerPromise = navigator.serviceWorker.register("./sw.js", { scope: "./" })
+      .then(async (registration) => {
+        await navigator.serviceWorker.ready;
+        generatedImageServiceWorkerRegistration = registration;
+        return registration;
+      })
+      .catch((error) => {
+        generatedImageServiceWorkerPromise = null;
+        throw error;
+      });
+  }
+  return generatedImageServiceWorkerPromise;
+}
+
+async function verifyGeneratedImageCanLoad(imageUrl) {
+  await new Promise((resolve, reject) => {
+    const image = new Image();
+    const timeout = window.setTimeout(() => reject(new Error("远程图片加载超时")), 10000);
+    image.onload = () => {
+      window.clearTimeout(timeout);
+      resolve();
+    };
+    image.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(new Error("远程图片已失效或无访问权限"));
+    };
+    image.src = imageUrl;
+  });
+}
+
+async function cacheGeneratedImageOpaque(imageUrl) {
+  if (!canUseOpaqueImageCache()) throw new Error("当前页面不支持 Service Worker 图片缓存");
+  await verifyGeneratedImageCanLoad(imageUrl);
+  const registration = generatedImageServiceWorkerRegistration || await registerGeneratedImageServiceWorker();
+  const worker = registration?.active || registration?.waiting || registration?.installing;
+  if (!worker) throw new Error("Service Worker 未激活");
+
+  await new Promise((resolve, reject) => {
+    const channel = new MessageChannel();
+    const timeout = window.setTimeout(() => reject(new Error("Service Worker 图片缓存超时")), 15000);
+    channel.port1.onmessage = (event) => {
+      window.clearTimeout(timeout);
+      if (event.data?.ok) resolve();
+      else reject(new Error(event.data?.error || "Service Worker 图片缓存失败"));
+    };
+    worker.postMessage({ type: "CACHE_IMAGE", url: imageUrl }, [channel.port2]);
+  });
+
+  const cache = await caches.open(OPAQUE_IMAGE_CACHE_NAME);
+  const response = await cache.match(imageUrl);
+  if (response?.type !== "opaque") throw new Error("Cache Storage 未保存 opaque 图片响应");
+}
+
+async function loadGeneratedImageOpaqueCache(imageUrl) {
+  if (!canUseOpaqueImageCache() || !isRemoteGeneratedImageUrl(imageUrl)) return null;
+  const cache = await caches.open(OPAQUE_IMAGE_CACHE_NAME);
+  const response = await cache.match(imageUrl);
+  return response?.type === "opaque" ? response : null;
+}
+
+async function deleteGeneratedImageOpaqueCache(imageUrl) {
+  if (!canUseOpaqueImageCache() || !isRemoteGeneratedImageUrl(imageUrl)) return false;
+  const cache = await caches.open(OPAQUE_IMAGE_CACHE_NAME);
+  return cache.delete(imageUrl);
 }
 
 function downloadGeneratedImageBlob(entry, blob) {
@@ -571,11 +651,24 @@ function releaseGeneratedImageObjectUrl(entryId) {
 function setGeneratedImageCacheMetadata(entry, blob, sourceUrl = "") {
   if (isRemoteGeneratedImageUrl(sourceUrl)) entry.originalImageUrl = sourceUrl;
   entry.imageCacheKey = getGenerationImageCacheKey(entry.id);
+  entry.imageCacheBackend = "blob";
   entry.imageCacheStatus = "ready";
   entry.imageCacheErrorCode = "";
   entry.imageCacheErrorMessage = "";
   entry.imageMimeType = blob.type || "application/octet-stream";
   entry.imageByteSize = blob.size;
+}
+
+function setGeneratedImageOpaqueCacheMetadata(entry, sourceUrl) {
+  entry.imageUrl = sourceUrl;
+  entry.originalImageUrl = sourceUrl;
+  entry.imageCacheKey = "";
+  entry.imageCacheBackend = "opaque";
+  entry.imageCacheStatus = "ready";
+  entry.imageCacheErrorCode = "";
+  entry.imageCacheErrorMessage = "";
+  entry.imageMimeType = "";
+  entry.imageByteSize = undefined;
 }
 
 function attachGeneratedImageBlob(entry, blob, sourceUrl = "") {
@@ -640,7 +733,25 @@ async function cacheGeneratedImage(entry) {
     await deleteGenerationImageCache(entry.id).catch(() => {});
     const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
     if (currentEntry?.status === "ready" && currentEntry.imageUrl === imageUrl) {
+      if (error?.imageCacheErrorCode === "remote_unavailable" && isRemoteGeneratedImageUrl(imageUrl)) {
+        try {
+          await cacheGeneratedImageOpaque(imageUrl);
+          const opaqueEntry = state.generationEntries.find((item) => item.id === entry.id);
+          if (!opaqueEntry || opaqueEntry.status !== "ready" || opaqueEntry.imageUrl !== imageUrl) {
+            await deleteGeneratedImageOpaqueCache(imageUrl).catch(() => false);
+            return;
+          }
+          setGeneratedImageOpaqueCacheMetadata(opaqueEntry, imageUrl);
+          await persistGenerationHistory({ strict: true });
+          syncGeneratedImageCacheSuccess(opaqueEntry);
+          showToast("临时图片已保存到浏览器缓存");
+          return;
+        } catch {
+          await deleteGeneratedImageOpaqueCache(imageUrl).catch(() => false);
+        }
+      }
       currentEntry.imageCacheKey = "";
+      currentEntry.imageCacheBackend = "";
       currentEntry.imageCacheStatus = "error";
       currentEntry.imageCacheErrorCode = error?.imageCacheErrorCode || "storage_unavailable";
       currentEntry.imageCacheErrorMessage = currentEntry.imageCacheErrorCode === "remote_unavailable"
@@ -667,7 +778,7 @@ function queueGeneratedImageCache(entry) {
 
 function queueGenerationHistoryImageCache(entries) {
   entries
-    .filter((entry) => entry.status === "ready" && isGeneratedImageSourceUrl(entry.imageUrl))
+    .filter((entry) => entry.status === "ready" && entry.imageCacheBackend !== "opaque" && isGeneratedImageSourceUrl(entry.imageUrl))
     .forEach((entry) => {
       historyImageCacheQueue = historyImageCacheQueue
         .then(() => cacheGeneratedImage(entry))
@@ -687,6 +798,7 @@ async function restoreGenerationHistoryImages(entries) {
       if (entry.imageUrl
         || entry.originalImageUrl !== (isRemoteGeneratedImageUrl(sourceUrl) ? sourceUrl : "")
         || entry.imageCacheKey !== getGenerationImageCacheKey(entry.id)
+        || entry.imageCacheBackend !== "blob"
         || entry.imageCacheStatus !== "ready"
         || entry.imageCacheErrorCode
         || entry.imageCacheErrorMessage
@@ -695,10 +807,30 @@ async function restoreGenerationHistoryImages(entries) {
       attachGeneratedImageBlob(entry, cached.blob, sourceUrl);
       continue;
     }
+    const opaqueSourceUrl = isRemoteGeneratedImageUrl(entry.originalImageUrl) ? entry.originalImageUrl : entry.imageUrl;
+    if (entry.imageCacheBackend === "opaque" && isRemoteGeneratedImageUrl(opaqueSourceUrl)) {
+      const opaqueResponse = await loadGeneratedImageOpaqueCache(opaqueSourceUrl).catch(() => null);
+      if (opaqueResponse) {
+        if (entry.imageUrl !== opaqueSourceUrl
+          || entry.originalImageUrl !== opaqueSourceUrl
+          || entry.imageCacheKey
+          || entry.imageCacheStatus !== "ready"
+          || entry.imageCacheErrorCode
+          || entry.imageCacheErrorMessage
+          || entry.imageMimeType
+          || entry.imageByteSize !== undefined) normalized = true;
+        setGeneratedImageOpaqueCacheMetadata(entry, opaqueSourceUrl);
+        continue;
+      }
+      entry.imageCacheBackend = "";
+      entry.imageCacheStatus = "";
+      normalized = true;
+    }
     if (!entry.imageUrl && isRemoteGeneratedImageUrl(entry.originalImageUrl)) entry.imageUrl = entry.originalImageUrl;
     if (!isGeneratedImageSourceUrl(entry.imageUrl)) {
       if (entry.imageCacheStatus !== "error" || entry.imageCacheKey || entry.imageCacheErrorCode !== "missing_source" || entry.imageCacheErrorMessage !== "本地图片缓存和原始来源均不可用。" || entry.imageMimeType || entry.imageByteSize !== undefined) normalized = true;
       entry.imageCacheKey = "";
+      entry.imageCacheBackend = "";
       entry.imageCacheStatus = "error";
       entry.imageCacheErrorCode = "missing_source";
       entry.imageCacheErrorMessage = "本地图片缓存和原始来源均不可用。";
@@ -710,10 +842,19 @@ async function restoreGenerationHistoryImages(entries) {
 }
 
 async function cleanupOrphanedGenerationImageCaches(retainedEntryIds) {
-  const caches = await listGenerationImageCaches().catch(() => []);
-  await Promise.all(caches
+  const blobCaches = await listGenerationImageCaches().catch(() => []);
+  await Promise.all(blobCaches
     .filter((cache) => !retainedEntryIds.has(cache.entryId))
     .map((cache) => deleteGenerationImageCache(cache.entryId).catch(() => {})));
+}
+
+async function cleanupOrphanedGeneratedImageOpaqueCaches(retainedImageUrls) {
+  if (!canUseOpaqueImageCache()) return;
+  const cache = await caches.open(OPAQUE_IMAGE_CACHE_NAME);
+  const requests = await cache.keys();
+  await Promise.all(requests
+    .filter((request) => !retainedImageUrls.has(request.url))
+    .map((request) => cache.delete(request).catch(() => false)));
 }
 
 function fillApiSettingsForm(settings = {}) {
@@ -1643,6 +1784,7 @@ function confirmRetryGeneration() {
   closeRetryGenerationDialog();
   if (!entry) return;
   deleteGenerationImageCache(entry.id).catch(() => {});
+  deleteGeneratedImageOpaqueCache(entry.originalImageUrl || entry.imageUrl).catch(() => false);
   releaseGeneratedImageObjectUrl(entry.id);
   entry.taskId = "";
   entry.taskStatus = "";
@@ -1651,6 +1793,7 @@ function confirmRetryGeneration() {
   entry.imageUrl = "";
   entry.originalImageUrl = "";
   entry.imageCacheKey = "";
+  entry.imageCacheBackend = "";
   entry.imageCacheStatus = "";
   entry.imageCacheErrorCode = "";
   entry.imageCacheErrorMessage = "";
@@ -1702,12 +1845,17 @@ function writePendingImageCleanup(items) {
 function removePendingImageCleanup(entryId) {
   window.clearTimeout(imageCleanupTimers.get(entryId));
   imageCleanupTimers.delete(entryId);
+  pendingOpaqueImageCleanupUrls.delete(entryId);
   writePendingImageCleanup(readPendingImageCleanup().filter((item) => item.entryId !== entryId));
 }
 
 async function runPendingImageCleanup(item) {
+  const opaqueImageUrl = pendingOpaqueImageCleanupUrls.get(item.entryId) || "";
   removePendingImageCleanup(item.entryId);
-  await deleteGenerationImageCache(item.entryId).catch(() => {});
+  await Promise.all([
+    deleteGenerationImageCache(item.entryId).catch(() => {}),
+    deleteGeneratedImageOpaqueCache(opaqueImageUrl).catch(() => false)
+  ]);
   releaseGeneratedImageObjectUrl(item.entryId);
 }
 
@@ -1719,6 +1867,10 @@ function armPendingImageCleanup(item) {
 
 function queueGeneratedImageCleanup(entry, delay = IMAGE_CLEANUP_DELAY) {
   if (!entry?.id) return;
+  const opaqueImageUrl = entry.imageCacheBackend === "opaque"
+    ? (isRemoteGeneratedImageUrl(entry.originalImageUrl) ? entry.originalImageUrl : entry.imageUrl)
+    : "";
+  if (opaqueImageUrl) pendingOpaqueImageCleanupUrls.set(entry.id, opaqueImageUrl);
   const item = { entryId: entry.id, deleteAfter: Date.now() + delay };
   const items = readPendingImageCleanup().filter((pending) => pending.entryId !== entry.id);
   items.push(item);
@@ -1743,7 +1895,13 @@ async function restoreGenerationHistory() {
     state.generationEntries = savedEntries.filter((entry) => !pendingIds.has(entry.id));
     state.batchNumber = Number(saved?.batchNumber) || 0;
     const normalizedImageHistory = await restoreGenerationHistoryImages(state.generationEntries);
-    await cleanupOrphanedGenerationImageCaches(new Set([...state.generationEntries.map((entry) => entry.id), ...pendingIds]));
+    await Promise.all([
+      cleanupOrphanedGenerationImageCaches(new Set([...state.generationEntries.map((entry) => entry.id), ...pendingIds])),
+      cleanupOrphanedGeneratedImageOpaqueCaches(new Set(state.generationEntries
+        .filter((entry) => entry.imageCacheBackend === "opaque")
+        .map((entry) => entry.originalImageUrl || entry.imageUrl)
+        .filter(isRemoteGeneratedImageUrl))).catch(() => {})
+    ]);
     generationHistoryLoaded = true;
     renderGenerationFeed();
     if (saved && (saved.migrated || normalizedImageHistory || interruptedCount || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
@@ -1814,8 +1972,11 @@ async function openHistoryDialog() {
   const storedHistory = saved ? { schemaVersion: saved.schemaVersion, entries: saved.entries, batchNumber: saved.batchNumber, savedAt: saved.savedAt } : null;
   const historyBytes = storedHistory ? new Blob([JSON.stringify(storedHistory)]).size : 0;
   const imageCacheBytes = caches.reduce((total, cache) => total + cache.blob.size, 0);
+  const opaqueImageCount = entries.filter((entry) => entry.imageCacheBackend === "opaque" && entry.imageCacheStatus === "ready").length;
   $("historyDataSize").textContent = formatStorageEstimate(historyBytes);
-  $("historyImageCacheSize").textContent = formatStorageEstimate(imageCacheBytes);
+  $("historyImageCacheSize").textContent = opaqueImageCount
+    ? `${formatStorageEstimate(imageCacheBytes)} + ${opaqueImageCount} 张链接缓存`
+    : formatStorageEstimate(imageCacheBytes);
   if (Number.isFinite(estimate?.usage)) $("historyStorageEstimate").textContent = formatStorageEstimate(estimate.usage);
   syncHistoryCleanupState(keepCount);
   showDialogAtTop(historyDialog);
@@ -2160,6 +2321,7 @@ async function cacheGeneratedImageFile(entry, file) {
     }
     setGeneratedImageCacheMetadata(currentEntry, verified.blob, sourceUrl);
     await persistGenerationHistory({ strict: true });
+    await deleteGeneratedImageOpaqueCache(sourceUrl).catch(() => false);
     attachGeneratedImageBlob(currentEntry, verified.blob, sourceUrl);
     await persistGenerationHistory();
     if (hadRuntimeImage) syncGeneratedImageCacheSuccess(currentEntry);
@@ -2170,6 +2332,7 @@ async function cacheGeneratedImageFile(entry, file) {
     const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
     if (currentEntry?.status === "ready") {
       currentEntry.imageCacheKey = "";
+      currentEntry.imageCacheBackend = "";
       currentEntry.imageCacheStatus = "error";
       currentEntry.imageCacheErrorCode = "storage_unavailable";
       currentEntry.imageCacheErrorMessage = "本地图片写入 IndexedDB 失败，请检查浏览器存储权限或空间。";
@@ -2445,7 +2608,7 @@ generationFeed.addEventListener("keydown", (event) => {
 });
 generationFeed.addEventListener("toggle", (event) => {
   const batch = event.target.closest(".generation-batch");
-  if (!batch || event.target !== batch) return;
+  if (!batch || event.target !== batch || !batch.isConnected) return;
   if (batch.open) openGenerationBatchIds.add(batch.dataset.batchId);
   else openGenerationBatchIds.delete(batch.dataset.batchId);
   saveOpenGenerationBatchIds();
@@ -2498,6 +2661,7 @@ renderPromptCards();
 renderGenerationFeed();
 loadSavedApiSettings().then(async () => {
   checkImageService();
+  registerGeneratedImageServiceWorker()?.catch(() => {});
   await restoreGenerationHistory();
   if (!applyLocalPromptPreview()) resumePendingGenerationTasks();
 });
