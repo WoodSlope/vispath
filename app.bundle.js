@@ -493,6 +493,15 @@ function renderActualImageSize(entry) {
   return `<span class="generation-actual-size ${matches ? "is-match" : "is-mismatch"}">实际 ${entry.imageWidth}×${entry.imageHeight} · ${matches ? "比例一致" : "比例不符"}</span>`;
 }
 
+function renderGeneratedImageCacheStatus(entry) {
+  if (entry.imageCacheStatus !== "error") return "";
+  return `<span class="generation-image-cache-error" role="status"><strong>图片缓存失败</strong><span>当前图片仍可使用，请先保存本地，或重新缓存。</span><button class="button button-quiet" type="button" data-action="retry-image-cache">重新缓存</button></span>`;
+}
+
+function isGeneratedImageMissing(entry) {
+  return entry.status === "ready" && !entry.imageUrl && entry.imageCacheStatus === "error";
+}
+
 function createImageDownloadName(entry) {
   const title = String(entry?.variantTitle || "生成图片")
     .replace(/[\\/:*?"<>|]/g, "-")
@@ -557,10 +566,11 @@ function attachGeneratedImageBlob(entry, blob, sourceUrl = "") {
   entry.imageUrl = objectUrl;
 }
 
-function syncGeneratedImageRuntimeUrl(entry) {
+function syncGeneratedImageCacheSuccess(entry) {
   const card = generationFeed.querySelector(`[data-generation-id="${CSS.escape(entry.id)}"]`);
   const image = card?.querySelector(".generation-image-frame img");
   if (image) image.src = entry.imageUrl;
+  card?.querySelector(".generation-image-cache-error")?.remove();
 }
 
 async function cacheGeneratedImage(entry) {
@@ -597,7 +607,7 @@ async function cacheGeneratedImage(entry) {
       return;
     }
     attachGeneratedImageBlob(latestEntry, blob, imageUrl);
-    syncGeneratedImageRuntimeUrl(latestEntry);
+    syncGeneratedImageCacheSuccess(latestEntry);
     await persistGenerationHistory();
   } catch (error) {
     await deleteGenerationImageCache(entry.id).catch(() => {});
@@ -608,6 +618,8 @@ async function cacheGeneratedImage(entry) {
       currentEntry.imageMimeType = "";
       currentEntry.imageByteSize = undefined;
       await persistGenerationHistory();
+      renderGenerationFeed({ openBatchId: currentEntry.batchId || `legacy_batch_${currentEntry.batchNumber || "00"}` });
+      showToast("图片缓存失败，请保存本地或重新缓存");
     }
     throw error;
   }
@@ -649,6 +661,13 @@ async function restoreGenerationHistoryImages(entries) {
       continue;
     }
     if (!entry.imageUrl && isRemoteGeneratedImageUrl(entry.originalImageUrl)) entry.imageUrl = entry.originalImageUrl;
+    if (!isGeneratedImageSourceUrl(entry.imageUrl)) {
+      if (entry.imageCacheStatus !== "error" || entry.imageCacheKey || entry.imageMimeType || entry.imageByteSize !== undefined) normalized = true;
+      entry.imageCacheKey = "";
+      entry.imageCacheStatus = "error";
+      entry.imageMimeType = "";
+      entry.imageByteSize = undefined;
+    }
   }
   return normalized;
 }
@@ -1186,12 +1205,13 @@ function scheduleTextTooltipOverflowSync() {
 function renderGenerationActions(entry) {
   const isReady = entry.status === "ready";
   const isLoading = entry.status === "loading";
+  const canDownloadImage = isReady && Boolean(entry.imageUrl);
   const canCopyPrompt = Boolean(entry.promptSnapshot);
   const retryLabel = entry.status === "error" ? "重新尝试" : "重新生成";
   return `
     <div class="generation-actions" role="group" aria-label="${escapeHtml(entry.variantTitle)}操作">
       <button class="button${isReady ? " button-primary" : ""}" type="button" data-action="continue" title="${isReady ? "基于当前结果继续细化" : "图片生成完成后可用"}" ${isReady ? "" : "disabled"}>基于此结果细化</button>
-      <button class="button" type="button" data-action="download-image" title="${isReady ? "保存生成图片到本地" : "图片生成完成后可用"}" ${isReady ? "" : "disabled"}>保存本地</button>
+      <button class="button" type="button" data-action="download-image" title="${canDownloadImage ? "保存生成图片到本地" : isGeneratedImageMissing(entry) ? "本地图片缓存已丢失，请重新生成" : "图片生成完成后可用"}" ${canDownloadImage ? "" : "disabled"}>保存本地</button>
       <button class="button" type="button" data-action="copy-generation" title="${canCopyPrompt ? "复制完整提示词" : "当前记录缺少提示词"}" ${canCopyPrompt ? "" : "disabled"}>复制提示词</button>
       <button class="button${entry.status === "error" ? " button-primary" : ""}" type="button" data-action="retry" title="${isLoading ? "当前图片生成中" : retryLabel}" ${isLoading ? "disabled" : ""}>${retryLabel}</button>
     </div>
@@ -1248,12 +1268,12 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
         </div>
       </div>
       <div class="generation-art ${escapeHtml(entry.artClass)} ${entry.status === "loading" ? "is-loading" : ""}">
-        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><span class="generation-image-frame" style="--generation-image-ratio:${getDisplayAspectRatio(entry).toFixed(6)}"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span class="generation-image-recovery" role="status"><strong>图片未加载</strong><small>可尝试下载恢复</small></span></span><span class="generation-image-open-label">查看大图</span></button>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
+        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><span class="generation-image-frame" style="--generation-image-ratio:${getDisplayAspectRatio(entry).toFixed(6)}"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span class="generation-image-recovery" role="status"><strong>图片未加载</strong><small>可尝试下载恢复</small></span></span><span class="generation-image-open-label">查看大图</span></button>` : isGeneratedImageMissing(entry) ? `<div class="generation-state error" role="status"><span class="state-marker" aria-hidden="true">!</span><strong>本地图片缓存已丢失</strong><small>原始图片来源也不可用，请重新生成恢复图片</small></div>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
       </div>
       <div class="generation-body">
         <div class="generation-card-meta"><span>请求 ${escapeHtml(entry.resolution || "1K")} · ${escapeHtml(entry.ratio || "未设比例")} · ${entry.generationMode === "sync" ? "同步" : "异步"}${entry.actualResponseFormat ? ` · 实际返回 ${entry.actualResponseFormat === "b64_json" ? "Base64" : "URL"}` : ""}</span><span>${entry.status !== "loading" && entry.startedAt && entry.completedAt ? `耗时 ${escapeHtml(formatGenerationElapsed(entry.startedAt, entry.completedAt))}` : "等待生成结果"}</span></div>
         ${entry.explorationDimensionName ? `<div class="generation-exploration"><span class="generation-exploration-label">${escapeHtml(entry.explorationDimensionName)}</span><strong class="generation-exploration-value">${escapeHtml(entry.explorationOption || "未记录具体方向")}</strong></div>` : ""}
-        ${entry.imageUrl ? `<div class="generation-image-diagnostics">${renderActualImageSize(entry)}</div>` : entry.status === "error" ? `<div class="generation-image-diagnostics"><span class="generation-error-tooltip-trigger text-tooltip-trigger"><span class="generation-error-label">失败原因</span><span class="generation-error-summary" data-tooltip-overflow-target>${escapeHtml(entry.errorMessage || "图片生成失败，请稍后重试")}</span><span class="generation-error-tooltip text-tooltip" id="generation-error-${escapeHtml(entry.id)}" role="tooltip"><strong>失败原因</strong><span>${escapeHtml(entry.errorMessage || "图片生成失败，请稍后重试")}</span>${entry.requestId ? `<small>Request ID：${escapeHtml(entry.requestId)}</small>` : ""}</span></span></div>` : ""}
+        ${entry.imageUrl ? `<div class="generation-image-diagnostics">${renderActualImageSize(entry)}${renderGeneratedImageCacheStatus(entry)}</div>` : entry.status === "error" ? `<div class="generation-image-diagnostics"><span class="generation-error-tooltip-trigger text-tooltip-trigger"><span class="generation-error-label">失败原因</span><span class="generation-error-summary" data-tooltip-overflow-target>${escapeHtml(entry.errorMessage || "图片生成失败，请稍后重试")}</span><span class="generation-error-tooltip text-tooltip" id="generation-error-${escapeHtml(entry.id)}" role="tooltip"><strong>失败原因</strong><span>${escapeHtml(entry.errorMessage || "图片生成失败，请稍后重试")}</span>${entry.requestId ? `<small>Request ID：${escapeHtml(entry.requestId)}</small>` : ""}</span></span></div>` : ""}
         ${entry.status === "loading" ? `<div class="generation-progress" role="status"><span class="generation-spinner" aria-hidden="true"></span><span><strong>${escapeHtml(entry.taskStatus === "queued" ? "任务排队中" : entry.taskStatus ? "服务端生成中" : "正在提交任务")}${entry.taskProgress ? ` · ${escapeHtml(entry.taskProgress)}` : ""}</strong><small>已等待 <span class="generation-elapsed" data-started-at="${escapeHtml(entry.startedAt || entry.batchCreatedAt)}">${formatGenerationElapsed(entry.startedAt || entry.batchCreatedAt)}</span>${entry.taskId ? `<span class="generation-task-id">task_id：${escapeHtml(entry.taskId)}</span>` : ""}</small></span></div>` : ""}
         <div class="generation-prompt-snapshot">
           <div class="prompt-preview" tabindex="0" role="region" aria-label="完整提示词">${escapeHtml(entry.promptSnapshot)}</div>
@@ -1978,6 +1998,14 @@ function handleGenerationAction(event) {
     link.rel = "noopener";
     link.click();
     showToast("已开始下载图片");
+    return;
+  }
+  if (button.dataset.action === "retry-image-cache") {
+    entry.imageCacheStatus = "pending";
+    renderGenerationFeed({ openBatchId: entry.batchId || `legacy_batch_${entry.batchNumber || "00"}` });
+    persistGenerationHistory();
+    queueGeneratedImageCache(entry);
+    showToast("正在重新缓存图片");
     return;
   }
   if (button.dataset.action === "toggle-favorite") {
