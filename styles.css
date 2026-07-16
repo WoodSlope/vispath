@@ -432,7 +432,7 @@ body:has(#promptStage.is-stage-active) .toast { bottom: calc(var(--toast-block-i
 .dialog-title-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dialog-title-action:disabled { color: var(--muted); cursor: wait; text-decoration: none; }
 .history-dialog { width: min(520px, calc(100vw - 32px)); }
-.history-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+.history-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
 .history-stats div { display: grid; gap: 4px; padding: 8px; border: 1px solid var(--line); background: var(--surface); }
 .history-stats strong { font-size: 18px; }
 .history-stats span { color: var(--muted); font-size: 10px; }
@@ -449,6 +449,13 @@ body:has(#promptStage.is-stage-active) .toast { bottom: calc(var(--toast-block-i
 .api-test-status.is-error { color: var(--danger); font-weight: 700; }
 .api-settings-grid label { margin: 0; }
 .api-settings-grid input { padding: 0 10px; }
+.api-key-control { position: relative; display: block; min-width: 0; }
+.api-key-control input { padding-right: 48px; }
+.api-key-visibility { position: absolute; top: 0; right: 0; display: inline-flex; min-width: 44px; min-height: var(--control-height); align-items: center; justify-content: center; padding: 0 8px; border: 0; border-left: 1px solid var(--line); color: var(--muted); background: transparent; font-size: 9px; font-weight: 700; }
+.api-key-visibility:hover { color: var(--accent); background: var(--surface); }
+.api-key-visibility:active { color: var(--ink); background: var(--surface-strong); }
+.api-key-visibility:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.api-key-visibility[aria-pressed="true"] { color: var(--accent); }
 .form-field-label-row { display: flex; align-items: baseline; gap: 6px; }
 .api-provider-group .form-field-label-row small { display: inline; margin: 0; color: var(--muted); font-size: 9px; font-weight: 400; }
 .api-provider-group small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; }

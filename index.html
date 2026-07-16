@@ -229,13 +229,13 @@
         <section class="api-provider-group" aria-labelledby="textApiGroupTitle">
           <div class="api-provider-heading"><h3 id="textApiGroupTitle">文本 API</h3><span class="api-test-status" id="textApiTestStatus" role="status">未测试</span></div>
           <label class="form-field" for="textBaseUrlInput"><span class="form-field-label-row"><span>API 地址</span><small id="textBaseUrlHint">填写到 /v1</small></span><input id="textBaseUrlInput" type="url" placeholder="https://text-api.example/v1" aria-describedby="textBaseUrlHint textBaseUrlError"><small class="field-error hidden" id="textBaseUrlError" role="alert">填写文本 API Key 时必须同时填写地址。</small></label>
-          <label class="form-field" for="textApiKeyInput"><span>API Key</span><input id="textApiKeyInput" type="password" autocomplete="off"></label>
+          <div class="form-field"><label for="textApiKeyInput">API Key</label><span class="api-key-control"><input id="textApiKeyInput" type="password" autocomplete="off"><button class="api-key-visibility" id="textApiKeyVisibilityBtn" type="button" data-api-key-input="textApiKeyInput" data-api-key-name="文本" aria-controls="textApiKeyInput" aria-pressed="false" aria-label="显示文本 API Key">显示</button></span></div>
           <label class="form-field" for="textModelInput"><span>模型</span><input id="textModelInput" type="text" value="gpt-5.4-mini"></label>
         </section>
         <section class="api-provider-group" aria-labelledby="imageApiGroupTitle">
           <div class="api-provider-heading"><h3 id="imageApiGroupTitle">生图 API</h3><span class="api-test-status" id="imageApiTestStatus" role="status">未测试</span></div>
           <label class="form-field" for="imageBaseUrlInput"><span class="form-field-label-row"><span>API 地址</span><small id="imageBaseUrlHint">填写到 /v1</small></span><input id="imageBaseUrlInput" type="url" placeholder="https://image-api.example/v1" aria-describedby="imageBaseUrlHint imageBaseUrlError"><small class="field-error hidden" id="imageBaseUrlError" role="alert">填写生图 API Key 时必须同时填写地址。</small></label>
-          <label class="form-field" for="imageApiKeyInput"><span>API Key</span><input id="imageApiKeyInput" type="password" autocomplete="off"></label>
+          <div class="form-field"><label for="imageApiKeyInput">API Key</label><span class="api-key-control"><input id="imageApiKeyInput" type="password" autocomplete="off"><button class="api-key-visibility" id="imageApiKeyVisibilityBtn" type="button" data-api-key-input="imageApiKeyInput" data-api-key-name="生图" aria-controls="imageApiKeyInput" aria-pressed="false" aria-label="显示生图 API Key">显示</button></span></div>
           <label class="form-field" for="imageModelInput"><span>模型</span><input id="imageModelInput" type="text" value="gpt-image-2"></label>
           <label class="form-field" for="imageGenerationModeInput"><span>生成方式</span><span class="select-control"><select id="imageGenerationModeInput"><option value="async" selected>异步图片生成 · 推荐</option><option value="sync">同步图片生成</option></select></span></label>
         </section>
@@ -335,7 +335,9 @@
         <div><strong id="historyEntryCount">0</strong><span>条结果</span></div>
         <div><strong id="historyBatchCount">0</strong><span>个批次</span></div>
         <div><strong id="historyImageCount">0</strong><span>条带图片</span></div>
-        <div><strong id="historyStorageEstimate">--</strong><span>浏览器占用</span></div>
+        <div><strong id="historyDataSize">--</strong><span>历史数据</span></div>
+        <div><strong id="historyImageCacheSize">--</strong><span>图片 Blob</span></div>
+        <div><strong id="historyStorageEstimate">--</strong><span>本站总占用</span></div>
         </div>
         <div class="form-field history-retention">
         <label for="historyKeepCount">清理范围</label>
@@ -398,6 +400,6 @@
   </dialog>
 
   <div class="toast" id="toast" role="status"></div>
-  <script src="app.bundle.js?v=07a8ae299b94"></script>
+  <script src="app.bundle.js?v=2f9b4b887452"></script>
 </body>
 </html>

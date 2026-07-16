@@ -198,12 +198,13 @@ const STORE_NAME = "workspace";
 const HISTORY_KEY = "generation-history";
 const API_SETTINGS_KEY = "api-settings";
 const IMAGE_CACHE_KEY_PREFIX = "generation-image-cache:";
-const HISTORY_SCHEMA_VERSION = 10;
+const HISTORY_SCHEMA_VERSION = 11;
 const ENTRY_FIELDS = [
   "id", "batchId", "batchNumber", "batchCreatedAt", "variantTitle", "changeSummary", "promptSnapshot",
   "explorationDimensionId", "explorationDimensionName", "explorationOption", "artClass", "ratio", "resolution",
   "generationMode", "responseFormat", "actualResponseFormat", "createdAt", "startedAt", "completedAt", "status",
-  "imageUrl", "imageWidth", "imageHeight", "errorMessage", "requestId", "taskId", "taskStatus", "taskProgress", "favorite"
+  "imageUrl", "originalImageUrl", "imageCacheKey", "imageCacheStatus", "imageMimeType", "imageByteSize",
+  "imageWidth", "imageHeight", "errorMessage", "requestId", "taskId", "taskStatus", "taskProgress", "favorite"
 ];
 
 function inferActualResponseFormat(imageUrl) {
@@ -220,6 +221,12 @@ function sanitizeEntry(entry) {
   clean.batchId = String(clean.batchId || `legacy_batch_${clean.batchNumber}`);
   clean.batchCreatedAt = typeof clean.batchCreatedAt === "string" ? clean.batchCreatedAt : "";
   clean.status = ["loading", "ready", "error"].includes(clean.status) ? clean.status : "error";
+  if (typeof clean.imageUrl !== "string" || clean.imageUrl.startsWith("blob:")) clean.imageUrl = "";
+  clean.originalImageUrl = typeof clean.originalImageUrl === "string" ? clean.originalImageUrl : "";
+  clean.imageCacheStatus = ["pending", "ready", "error"].includes(clean.imageCacheStatus) ? clean.imageCacheStatus : "";
+  clean.imageCacheKey = typeof clean.imageCacheKey === "string" ? clean.imageCacheKey : "";
+  clean.imageMimeType = typeof clean.imageMimeType === "string" ? clean.imageMimeType : "";
+  clean.imageByteSize = Number.isInteger(clean.imageByteSize) && clean.imageByteSize > 0 ? clean.imageByteSize : undefined;
   clean.generationMode = clean.generationMode === "sync" ? "sync" : "async";
   clean.responseFormat = clean.responseFormat === "b64_json" ? "b64_json" : "url";
   clean.actualResponseFormat = ["url", "b64_json"].includes(clean.actualResponseFormat)
@@ -260,11 +267,25 @@ async function runTransaction(mode, action) {
   const database = await openDatabase();
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, mode);
-    const request = action(transaction.objectStore(STORE_NAME));
-    request.onsuccess = () => resolve(request.result);
+    let request;
+    let result;
+    try {
+      request = action(transaction.objectStore(STORE_NAME));
+    } catch (error) {
+      database.close();
+      reject(error);
+      return;
+    }
+    request.onsuccess = () => { result = request.result; };
     request.onerror = () => reject(request.error);
-    transaction.oncomplete = () => database.close();
-    transaction.onerror = () => reject(transaction.error);
+    transaction.oncomplete = () => {
+      database.close();
+      resolve(result);
+    };
+    transaction.onabort = transaction.onerror = () => {
+      database.close();
+      reject(transaction.error);
+    };
   });
 }
 
@@ -294,12 +315,19 @@ function loadGenerationImageCache(entryId) {
   return runTransaction("readonly", (store) => store.get(getGenerationImageCacheKey(entryId)));
 }
 
+async function listGenerationImageCaches() {
+  const records = await runTransaction("readonly", (store) => store.getAll());
+  return records.filter((record) => typeof record?.entryId === "string" && record.blob instanceof Blob && record.blob.size > 0);
+}
+
 function saveGenerationImageCache(entryId, imageUrl, blob) {
   if (!(blob instanceof Blob) || blob.size === 0) throw new Error("图片缓存内容无效");
   const record = {
     entryId: String(entryId),
-    imageUrl: String(imageUrl || ""),
+    imageUrl: /^https?:\/\//i.test(String(imageUrl || "")) ? String(imageUrl) : "",
     blob,
+    mimeType: blob.type || "application/octet-stream",
+    byteSize: blob.size,
     savedAt: new Date().toISOString()
   };
   return runTransaction("readwrite", (store) => store.put(record, getGenerationImageCacheKey(entryId)));
@@ -387,6 +415,7 @@ const IMAGE_CLEANUP_DELAY = 5500;
 const IMAGE_POLL_INTERVAL = 3000;
 const IMAGE_RETRY_DELAYS = [5000, 15000];
 const imageCleanupTimers = new Map();
+const generatedImageObjectUrls = new Map();
 let isGeneratingDirections = false;
 let openGenerationBatchIds = readOpenGenerationBatchIds();
 let hasSavedBatchDisclosure = localStorage.getItem(OPEN_BATCHES_KEY) !== null;
@@ -501,16 +530,87 @@ function isRemoteGeneratedImageUrl(imageUrl) {
   }
 }
 
+function isGeneratedImageSourceUrl(imageUrl) {
+  return isRemoteGeneratedImageUrl(imageUrl) || /^data:image\/[a-z0-9.+-]+;base64,/i.test(String(imageUrl || ""));
+}
+
+function releaseGeneratedImageObjectUrl(entryId) {
+  const objectUrl = generatedImageObjectUrls.get(entryId);
+  if (!objectUrl) return;
+  URL.revokeObjectURL(objectUrl);
+  generatedImageObjectUrls.delete(entryId);
+}
+
+function setGeneratedImageCacheMetadata(entry, blob, sourceUrl = "") {
+  if (isRemoteGeneratedImageUrl(sourceUrl)) entry.originalImageUrl = sourceUrl;
+  entry.imageCacheKey = getGenerationImageCacheKey(entry.id);
+  entry.imageCacheStatus = "ready";
+  entry.imageMimeType = blob.type || "application/octet-stream";
+  entry.imageByteSize = blob.size;
+}
+
+function attachGeneratedImageBlob(entry, blob, sourceUrl = "") {
+  releaseGeneratedImageObjectUrl(entry.id);
+  const objectUrl = URL.createObjectURL(blob);
+  generatedImageObjectUrls.set(entry.id, objectUrl);
+  setGeneratedImageCacheMetadata(entry, blob, sourceUrl);
+  entry.imageUrl = objectUrl;
+}
+
+function syncGeneratedImageRuntimeUrl(entry) {
+  const card = generationFeed.querySelector(`[data-generation-id="${CSS.escape(entry.id)}"]`);
+  const image = card?.querySelector(".generation-image-frame img");
+  if (image) image.src = entry.imageUrl;
+}
+
 async function cacheGeneratedImage(entry) {
   const imageUrl = entry.imageUrl;
-  const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
-  if (!currentEntry || currentEntry.status !== "ready" || currentEntry.imageUrl !== imageUrl) return;
-  const cached = await loadGenerationImageCache(currentEntry.id).catch(() => null);
-  if (cached?.imageUrl === imageUrl && cached.blob instanceof Blob && cached.blob.size > 0) return;
-  const blob = await fetchGeneratedImageBlob(imageUrl);
-  const latestEntry = state.generationEntries.find((item) => item.id === entry.id);
-  if (!latestEntry || latestEntry.status !== "ready" || latestEntry.imageUrl !== imageUrl) return;
-  await saveGenerationImageCache(latestEntry.id, imageUrl, blob);
+  try {
+    const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
+    if (!currentEntry || currentEntry.status !== "ready" || currentEntry.imageUrl !== imageUrl) return;
+    const cached = await loadGenerationImageCache(currentEntry.id).catch(() => null);
+    let blob;
+    if (cached?.blob instanceof Blob && cached.blob.size > 0 && (!cached.imageUrl || cached.imageUrl === imageUrl)) {
+      blob = cached.blob;
+    } else {
+      currentEntry.imageCacheStatus = "pending";
+      blob = await fetchGeneratedImageBlob(imageUrl);
+      const latestEntry = state.generationEntries.find((item) => item.id === entry.id);
+      if (!latestEntry || latestEntry.status !== "ready" || latestEntry.imageUrl !== imageUrl) return;
+      await saveGenerationImageCache(latestEntry.id, imageUrl, blob);
+      const verified = await loadGenerationImageCache(latestEntry.id);
+      if (!(verified?.blob instanceof Blob) || verified.blob.size !== blob.size) throw new Error("图片 Blob 缓存校验失败");
+      blob = verified.blob;
+    }
+
+    const referenceEntry = state.generationEntries.find((item) => item.id === entry.id);
+    if (!referenceEntry || referenceEntry.status !== "ready" || referenceEntry.imageUrl !== imageUrl) {
+      await deleteGenerationImageCache(entry.id).catch(() => {});
+      return;
+    }
+    setGeneratedImageCacheMetadata(referenceEntry, blob, imageUrl);
+    await persistGenerationHistory({ strict: true });
+
+    const latestEntry = state.generationEntries.find((item) => item.id === entry.id);
+    if (!latestEntry || latestEntry.status !== "ready" || latestEntry.imageUrl !== imageUrl) {
+      await deleteGenerationImageCache(entry.id).catch(() => {});
+      return;
+    }
+    attachGeneratedImageBlob(latestEntry, blob, imageUrl);
+    syncGeneratedImageRuntimeUrl(latestEntry);
+    await persistGenerationHistory();
+  } catch (error) {
+    await deleteGenerationImageCache(entry.id).catch(() => {});
+    const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
+    if (currentEntry?.status === "ready" && currentEntry.imageUrl === imageUrl) {
+      currentEntry.imageCacheKey = "";
+      currentEntry.imageCacheStatus = "error";
+      currentEntry.imageMimeType = "";
+      currentEntry.imageByteSize = undefined;
+      await persistGenerationHistory();
+    }
+    throw error;
+  }
 }
 
 function queueGeneratedImageCache(entry) {
@@ -522,13 +622,42 @@ function queueGeneratedImageCache(entry) {
 
 function queueGenerationHistoryImageCache(entries) {
   entries
-    .filter((entry) => entry.status === "ready" && isRemoteGeneratedImageUrl(entry.imageUrl))
+    .filter((entry) => entry.status === "ready" && isGeneratedImageSourceUrl(entry.imageUrl))
     .forEach((entry) => {
       historyImageCacheQueue = historyImageCacheQueue
         .then(() => cacheGeneratedImage(entry))
         .catch(() => {});
     });
   return historyImageCacheQueue;
+}
+
+async function restoreGenerationHistoryImages(entries) {
+  let normalized = false;
+  for (const entry of entries) {
+    if (entry.status !== "ready") continue;
+    const cached = await loadGenerationImageCache(entry.id).catch(() => null);
+    if (cached?.blob instanceof Blob && cached.blob.size > 0) {
+      const sourceUrl = entry.originalImageUrl || cached.imageUrl || entry.imageUrl;
+      const expectedMimeType = cached.blob.type || "application/octet-stream";
+      if (entry.imageUrl
+        || entry.originalImageUrl !== (isRemoteGeneratedImageUrl(sourceUrl) ? sourceUrl : "")
+        || entry.imageCacheKey !== getGenerationImageCacheKey(entry.id)
+        || entry.imageCacheStatus !== "ready"
+        || entry.imageMimeType !== expectedMimeType
+        || entry.imageByteSize !== cached.blob.size) normalized = true;
+      attachGeneratedImageBlob(entry, cached.blob, sourceUrl);
+      continue;
+    }
+    if (!entry.imageUrl && isRemoteGeneratedImageUrl(entry.originalImageUrl)) entry.imageUrl = entry.originalImageUrl;
+  }
+  return normalized;
+}
+
+async function cleanupOrphanedGenerationImageCaches(retainedEntryIds) {
+  const caches = await listGenerationImageCaches().catch(() => []);
+  await Promise.all(caches
+    .filter((cache) => !retainedEntryIds.has(cache.entryId))
+    .map((cache) => deleteGenerationImageCache(cache.entryId).catch(() => {})));
 }
 
 function fillApiSettingsForm(settings = {}) {
@@ -539,6 +668,20 @@ function fillApiSettingsForm(settings = {}) {
   $("imageApiKeyInput").value = settings.imageApiKey || "";
   $("imageModelInput").value = settings.imageModel || "gpt-image-2";
   $("imageGenerationModeInput").value = settings.imageGenerationMode === "sync" ? "sync" : "async";
+  resetApiKeyVisibility();
+}
+
+function setApiKeyVisibility(button, visible) {
+  const input = $(button.dataset.apiKeyInput);
+  const keyName = button.dataset.apiKeyName || "";
+  input.type = visible ? "text" : "password";
+  button.textContent = visible ? "隐藏" : "显示";
+  button.setAttribute("aria-pressed", String(visible));
+  button.setAttribute("aria-label", `${visible ? "隐藏" : "显示"}${keyName} API Key`);
+}
+
+function resetApiKeyVisibility() {
+  document.querySelectorAll("[data-api-key-input]").forEach((button) => setApiKeyVisibility(button, false));
 }
 
 function readApiSettingsForm() {
@@ -1403,11 +1546,17 @@ function confirmRetryGeneration() {
   closeRetryGenerationDialog();
   if (!entry) return;
   deleteGenerationImageCache(entry.id).catch(() => {});
+  releaseGeneratedImageObjectUrl(entry.id);
   entry.taskId = "";
   entry.taskStatus = "";
   entry.taskProgress = "";
   entry.requestId = "";
   entry.imageUrl = "";
+  entry.originalImageUrl = "";
+  entry.imageCacheKey = "";
+  entry.imageCacheStatus = "";
+  entry.imageMimeType = "";
+  entry.imageByteSize = undefined;
   entry.actualResponseFormat = undefined;
   entry.imageWidth = undefined;
   entry.imageHeight = undefined;
@@ -1420,16 +1569,17 @@ function confirmRetryGeneration() {
   enqueueGenerationEntries([entry]);
 }
 
-function persistGenerationHistory() {
+function persistGenerationHistory({ strict = false } = {}) {
   const snapshot = {
     entries: state.generationEntries.map((entry) => ({ ...entry })),
     batchNumber: state.batchNumber,
     savedAt: new Date().toISOString()
   };
-  historySaveQueue = historySaveQueue.then(() => saveGenerationHistory(snapshot)).catch(() => {
+  const saveAttempt = historySaveQueue.then(() => saveGenerationHistory(snapshot));
+  historySaveQueue = saveAttempt.catch(() => {
     showToast("历史记录保存失败，本次结果仍可继续使用");
   });
-  return historySaveQueue;
+  return strict ? saveAttempt : historySaveQueue;
 }
 
 function readPendingImageCleanup() {
@@ -1459,6 +1609,7 @@ function removePendingImageCleanup(entryId) {
 async function runPendingImageCleanup(item) {
   removePendingImageCleanup(item.entryId);
   await deleteGenerationImageCache(item.entryId).catch(() => {});
+  releaseGeneratedImageObjectUrl(item.entryId);
 }
 
 function armPendingImageCleanup(item) {
@@ -1468,7 +1619,7 @@ function armPendingImageCleanup(item) {
 }
 
 function queueGeneratedImageCleanup(entry, delay = IMAGE_CLEANUP_DELAY) {
-  if (!entry?.id || !entry.imageUrl) return;
+  if (!entry?.id) return;
   const item = { entryId: entry.id, deleteAfter: Date.now() + delay };
   const items = readPendingImageCleanup().filter((pending) => pending.entryId !== entry.id);
   items.push(item);
@@ -1492,9 +1643,11 @@ async function restoreGenerationHistory() {
     });
     state.generationEntries = savedEntries.filter((entry) => !pendingIds.has(entry.id));
     state.batchNumber = Number(saved?.batchNumber) || 0;
+    const normalizedImageHistory = await restoreGenerationHistoryImages(state.generationEntries);
+    await cleanupOrphanedGenerationImageCaches(new Set([...state.generationEntries.map((entry) => entry.id), ...pendingIds]));
     generationHistoryLoaded = true;
     renderGenerationFeed();
-    if (saved && (saved.migrated || interruptedCount || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
+    if (saved && (saved.migrated || normalizedImageHistory || interruptedCount || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
     queueGenerationHistoryImageCache(state.generationEntries);
     if (state.generationEntries.length) {
       $("feedHint").textContent = `已恢复 ${state.generationEntries.length} 条 · ${groupGenerationEntries().length} 个批次 · 当前浏览器`;
@@ -1537,7 +1690,8 @@ function showToast(message, action) {
 }
 
 function formatStorageEstimate(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "--";
+  if (!Number.isFinite(bytes) || bytes < 0) return "--";
+  if (bytes === 0) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -1549,12 +1703,21 @@ async function openHistoryDialog() {
   const keepCount = Number($("historyKeepCount").value);
   $("historyEntryCount").textContent = entries.length;
   $("historyBatchCount").textContent = batchCount;
-  $("historyImageCount").textContent = entries.filter((entry) => entry.imageUrl).length;
+  $("historyImageCount").textContent = entries.filter((entry) => entry.imageCacheStatus === "ready" || entry.imageUrl || entry.originalImageUrl).length;
+  $("historyDataSize").textContent = "--";
+  $("historyImageCacheSize").textContent = "--";
   $("historyStorageEstimate").textContent = "--";
-  if (navigator.storage?.estimate) {
-    const estimate = await navigator.storage.estimate().catch(() => null);
-    if (estimate?.usage) $("historyStorageEstimate").textContent = formatStorageEstimate(estimate.usage);
-  }
+  const [saved, caches, estimate] = await Promise.all([
+    loadGenerationHistory().catch(() => null),
+    listGenerationImageCaches().catch(() => []),
+    navigator.storage?.estimate ? navigator.storage.estimate().catch(() => null) : null
+  ]);
+  const storedHistory = saved ? { schemaVersion: saved.schemaVersion, entries: saved.entries, batchNumber: saved.batchNumber, savedAt: saved.savedAt } : null;
+  const historyBytes = storedHistory ? new Blob([JSON.stringify(storedHistory)]).size : 0;
+  const imageCacheBytes = caches.reduce((total, cache) => total + cache.blob.size, 0);
+  $("historyDataSize").textContent = formatStorageEstimate(historyBytes);
+  $("historyImageCacheSize").textContent = formatStorageEstimate(imageCacheBytes);
+  if (Number.isFinite(estimate?.usage)) $("historyStorageEstimate").textContent = formatStorageEstimate(estimate.usage);
   syncHistoryCleanupState(keepCount);
   showDialogAtTop(historyDialog);
 }
@@ -2001,7 +2164,7 @@ async function clearBrowserApiSettings() {
 }
 
 async function reset() {
-  const removedEntries = state.generationEntries.filter((entry) => entry.imageUrl);
+  const removedEntries = [...state.generationEntries];
   $("sourcePrompt").value = "";
   $("referenceImage").value = "";
   state.referenceImage = null;
@@ -2062,6 +2225,9 @@ $("apiSettingsBtn").addEventListener("click", () => {
 });
 $("textBaseUrlInput").addEventListener("input", () => clearApiBaseUrlError("text"));
 $("imageBaseUrlInput").addEventListener("input", () => clearApiBaseUrlError("image"));
+document.querySelectorAll("[data-api-key-input]").forEach((button) => {
+  button.addEventListener("click", () => setApiKeyVisibility(button, button.getAttribute("aria-pressed") !== "true"));
+});
 $("saveApiSettingsBtn").addEventListener("click", saveBrowserApiSettings);
 $("testApiConnectionBtn").addEventListener("click", testApiConnections);
 [["text", ["textBaseUrlInput", "textApiKeyInput", "textModelInput"]], ["image", ["imageBaseUrlInput", "imageApiKeyInput", "imageModelInput"]]].forEach(([kind, ids]) => {
