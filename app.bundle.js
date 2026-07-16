@@ -198,12 +198,12 @@ const STORE_NAME = "workspace";
 const HISTORY_KEY = "generation-history";
 const API_SETTINGS_KEY = "api-settings";
 const IMAGE_CACHE_KEY_PREFIX = "generation-image-cache:";
-const HISTORY_SCHEMA_VERSION = 11;
+const HISTORY_SCHEMA_VERSION = 12;
 const ENTRY_FIELDS = [
   "id", "batchId", "batchNumber", "batchCreatedAt", "variantTitle", "changeSummary", "promptSnapshot",
   "explorationDimensionId", "explorationDimensionName", "explorationOption", "artClass", "ratio", "resolution",
   "generationMode", "responseFormat", "actualResponseFormat", "createdAt", "startedAt", "completedAt", "status",
-  "imageUrl", "originalImageUrl", "imageCacheKey", "imageCacheStatus", "imageMimeType", "imageByteSize",
+  "imageUrl", "originalImageUrl", "imageCacheKey", "imageCacheStatus", "imageCacheErrorCode", "imageCacheErrorMessage", "imageMimeType", "imageByteSize",
   "imageWidth", "imageHeight", "errorMessage", "requestId", "taskId", "taskStatus", "taskProgress", "favorite"
 ];
 
@@ -224,6 +224,8 @@ function sanitizeEntry(entry) {
   if (typeof clean.imageUrl !== "string" || clean.imageUrl.startsWith("blob:")) clean.imageUrl = "";
   clean.originalImageUrl = typeof clean.originalImageUrl === "string" ? clean.originalImageUrl : "";
   clean.imageCacheStatus = ["pending", "ready", "error"].includes(clean.imageCacheStatus) ? clean.imageCacheStatus : "";
+  clean.imageCacheErrorCode = typeof clean.imageCacheErrorCode === "string" ? clean.imageCacheErrorCode : "";
+  clean.imageCacheErrorMessage = typeof clean.imageCacheErrorMessage === "string" ? clean.imageCacheErrorMessage : "";
   clean.imageCacheKey = typeof clean.imageCacheKey === "string" ? clean.imageCacheKey : "";
   clean.imageMimeType = typeof clean.imageMimeType === "string" ? clean.imageMimeType : "";
   clean.imageByteSize = Number.isInteger(clean.imageByteSize) && clean.imageByteSize > 0 ? clean.imageByteSize : undefined;
@@ -404,6 +406,7 @@ const comparisonDialog = $("comparisonDialog");
 const imageRatioSelect = $("imageRatio");
 let imageRatioOverridden = false;
 let pendingRetryEntryId = "";
+let pendingImageRecoveryEntryId = "";
 let historySaveQueue = Promise.resolve();
 let generationQueue = Promise.resolve();
 let imageCacheQueue = Promise.resolve();
@@ -495,7 +498,12 @@ function renderActualImageSize(entry) {
 
 function renderGeneratedImageCacheStatus(entry) {
   if (entry.imageCacheStatus !== "error") return "";
-  return `<span class="generation-image-cache-error" role="status"><strong>图片缓存失败</strong><span>当前图片仍可使用，请先保存本地，或重新缓存。</span><button class="button button-quiet" type="button" data-action="retry-image-cache">重新缓存</button></span>`;
+  const remoteUnavailable = entry.imageCacheErrorCode === "remote_unavailable";
+  const title = remoteUnavailable ? "远程图片无法读取或已过期" : "浏览器本地缓存写入失败";
+  const message = entry.imageCacheErrorMessage || (remoteUnavailable
+    ? "当前地址可能已过期或被 CORS 拦截，可选择已保存的本地图片补回。"
+    : "当前图片仍可使用，恢复浏览器存储后可重新缓存。");
+  return `<span class="generation-image-cache-error" role="status"><strong>${title}</strong><span>${escapeHtml(message)}</span><span class="generation-image-cache-error-actions">${remoteUnavailable ? "" : '<button class="button button-quiet" type="button" data-action="retry-image-cache">重新缓存</button>'}<button class="button button-quiet" type="button" data-action="recover-image-file">选择本地图片</button></span></span>`;
 }
 
 function isGeneratedImageMissing(entry) {
@@ -513,11 +521,17 @@ function createImageDownloadName(entry) {
 }
 
 async function fetchGeneratedImageBlob(imageUrl) {
-  const response = await fetch(imageUrl, { cache: "no-store" });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const blob = await response.blob();
-  if (!blob.size) throw new Error("图片内容为空");
-  return blob;
+  try {
+    const response = await fetch(imageUrl, { cache: "no-store" });
+    if (!response.ok) throw new Error(`远程图片请求失败（HTTP ${response.status}）`);
+    const blob = await response.blob();
+    if (!blob.size) throw new Error("远程图片内容为空");
+    return blob;
+  } catch (cause) {
+    const error = new Error(cause?.message || "远程图片无法读取");
+    error.imageCacheErrorCode = "remote_unavailable";
+    throw error;
+  }
 }
 
 function downloadGeneratedImageBlob(entry, blob) {
@@ -554,6 +568,8 @@ function setGeneratedImageCacheMetadata(entry, blob, sourceUrl = "") {
   if (isRemoteGeneratedImageUrl(sourceUrl)) entry.originalImageUrl = sourceUrl;
   entry.imageCacheKey = getGenerationImageCacheKey(entry.id);
   entry.imageCacheStatus = "ready";
+  entry.imageCacheErrorCode = "";
+  entry.imageCacheErrorMessage = "";
   entry.imageMimeType = blob.type || "application/octet-stream";
   entry.imageByteSize = blob.size;
 }
@@ -587,8 +603,15 @@ async function cacheGeneratedImage(entry) {
       blob = await fetchGeneratedImageBlob(imageUrl);
       const latestEntry = state.generationEntries.find((item) => item.id === entry.id);
       if (!latestEntry || latestEntry.status !== "ready" || latestEntry.imageUrl !== imageUrl) return;
-      await saveGenerationImageCache(latestEntry.id, imageUrl, blob);
-      const verified = await loadGenerationImageCache(latestEntry.id);
+      let verified;
+      try {
+        await saveGenerationImageCache(latestEntry.id, imageUrl, blob);
+        verified = await loadGenerationImageCache(latestEntry.id);
+      } catch (cause) {
+        const storageError = new Error(cause?.message || "浏览器本地缓存写入失败");
+        storageError.imageCacheErrorCode = "storage_unavailable";
+        throw storageError;
+      }
       if (!(verified?.blob instanceof Blob) || verified.blob.size !== blob.size) throw new Error("图片 Blob 缓存校验失败");
       blob = verified.blob;
     }
@@ -607,19 +630,25 @@ async function cacheGeneratedImage(entry) {
       return;
     }
     attachGeneratedImageBlob(latestEntry, blob, imageUrl);
-    syncGeneratedImageCacheSuccess(latestEntry);
     await persistGenerationHistory();
+    syncGeneratedImageCacheSuccess(latestEntry);
   } catch (error) {
     await deleteGenerationImageCache(entry.id).catch(() => {});
     const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
     if (currentEntry?.status === "ready" && currentEntry.imageUrl === imageUrl) {
       currentEntry.imageCacheKey = "";
       currentEntry.imageCacheStatus = "error";
+      currentEntry.imageCacheErrorCode = error?.imageCacheErrorCode || "storage_unavailable";
+      currentEntry.imageCacheErrorMessage = currentEntry.imageCacheErrorCode === "remote_unavailable"
+        ? "远程地址已过期、无权限或被 CORS 拦截，请选择已保存的本地图片。"
+        : "IndexedDB 暂时不可用或写入失败，请恢复浏览器存储后重试。";
       currentEntry.imageMimeType = "";
       currentEntry.imageByteSize = undefined;
       await persistGenerationHistory();
       renderGenerationFeed({ openBatchId: currentEntry.batchId || `legacy_batch_${currentEntry.batchNumber || "00"}` });
-      showToast("图片缓存失败，请保存本地或重新缓存");
+      showToast(currentEntry.imageCacheErrorCode === "remote_unavailable"
+        ? "远程图片无法读取，请选择已保存的本地图片"
+        : "浏览器本地缓存写入失败，请稍后重新缓存");
     }
     throw error;
   }
@@ -655,6 +684,8 @@ async function restoreGenerationHistoryImages(entries) {
         || entry.originalImageUrl !== (isRemoteGeneratedImageUrl(sourceUrl) ? sourceUrl : "")
         || entry.imageCacheKey !== getGenerationImageCacheKey(entry.id)
         || entry.imageCacheStatus !== "ready"
+        || entry.imageCacheErrorCode
+        || entry.imageCacheErrorMessage
         || entry.imageMimeType !== expectedMimeType
         || entry.imageByteSize !== cached.blob.size) normalized = true;
       attachGeneratedImageBlob(entry, cached.blob, sourceUrl);
@@ -662,9 +693,11 @@ async function restoreGenerationHistoryImages(entries) {
     }
     if (!entry.imageUrl && isRemoteGeneratedImageUrl(entry.originalImageUrl)) entry.imageUrl = entry.originalImageUrl;
     if (!isGeneratedImageSourceUrl(entry.imageUrl)) {
-      if (entry.imageCacheStatus !== "error" || entry.imageCacheKey || entry.imageMimeType || entry.imageByteSize !== undefined) normalized = true;
+      if (entry.imageCacheStatus !== "error" || entry.imageCacheKey || entry.imageCacheErrorCode !== "missing_source" || entry.imageCacheErrorMessage !== "本地图片缓存和原始来源均不可用。" || entry.imageMimeType || entry.imageByteSize !== undefined) normalized = true;
       entry.imageCacheKey = "";
       entry.imageCacheStatus = "error";
+      entry.imageCacheErrorCode = "missing_source";
+      entry.imageCacheErrorMessage = "本地图片缓存和原始来源均不可用。";
       entry.imageMimeType = "";
       entry.imageByteSize = undefined;
     }
@@ -1268,7 +1301,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
         </div>
       </div>
       <div class="generation-art ${escapeHtml(entry.artClass)} ${entry.status === "loading" ? "is-loading" : ""}">
-        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><span class="generation-image-frame" style="--generation-image-ratio:${getDisplayAspectRatio(entry).toFixed(6)}"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span class="generation-image-recovery" role="status"><strong>图片未加载</strong><small>可尝试下载恢复</small></span></span><span class="generation-image-open-label">查看大图</span></button>` : isGeneratedImageMissing(entry) ? `<div class="generation-state error" role="status"><span class="state-marker" aria-hidden="true">!</span><strong>本地图片缓存已丢失</strong><small>原始图片来源也不可用，请重新生成恢复图片</small></div>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
+        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><span class="generation-image-frame" style="--generation-image-ratio:${getDisplayAspectRatio(entry).toFixed(6)}"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span class="generation-image-recovery" role="status"><strong>图片未加载</strong><small>可选择本地图片补回</small></span></span><span class="generation-image-open-label">查看大图</span></button>` : isGeneratedImageMissing(entry) ? `<div class="generation-state error" role="status"><span class="state-marker" aria-hidden="true">!</span><strong>本地图片缓存已丢失</strong><small>选择已保存的本地图片补回，或重新生成</small><button class="button button-quiet" type="button" data-action="recover-image-file">选择本地图片</button></div>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
       </div>
       <div class="generation-body">
         <div class="generation-card-meta"><span>请求 ${escapeHtml(entry.resolution || "1K")} · ${escapeHtml(entry.ratio || "未设比例")} · ${entry.generationMode === "sync" ? "同步" : "异步"}${entry.actualResponseFormat ? ` · 实际返回 ${entry.actualResponseFormat === "b64_json" ? "Base64" : "URL"}` : ""}</span><span>${entry.status !== "loading" && entry.startedAt && entry.completedAt ? `耗时 ${escapeHtml(formatGenerationElapsed(entry.startedAt, entry.completedAt))}` : "等待生成结果"}</span></div>
@@ -1590,6 +1623,8 @@ function confirmRetryGeneration() {
   entry.originalImageUrl = "";
   entry.imageCacheKey = "";
   entry.imageCacheStatus = "";
+  entry.imageCacheErrorCode = "";
+  entry.imageCacheErrorMessage = "";
   entry.imageMimeType = "";
   entry.imageByteSize = undefined;
   entry.actualResponseFormat = undefined;
@@ -2002,10 +2037,18 @@ function handleGenerationAction(event) {
   }
   if (button.dataset.action === "retry-image-cache") {
     entry.imageCacheStatus = "pending";
+    entry.imageCacheErrorCode = "";
+    entry.imageCacheErrorMessage = "";
     renderGenerationFeed({ openBatchId: entry.batchId || `legacy_batch_${entry.batchNumber || "00"}` });
     persistGenerationHistory();
     queueGeneratedImageCache(entry);
     showToast("正在重新缓存图片");
+    return;
+  }
+  if (button.dataset.action === "recover-image-file") {
+    pendingImageRecoveryEntryId = entry.id;
+    $("imageRecoveryFileInput").value = "";
+    $("imageRecoveryFileInput").click();
     return;
   }
   if (button.dataset.action === "toggle-favorite") {
@@ -2070,6 +2113,53 @@ async function recoverGeneratedImage(entry) {
       onClick: () => openRetryGenerationDialog(entry)
     });
   }
+}
+
+async function cacheGeneratedImageFile(entry, file) {
+  if (!(file instanceof File) || !file.type.startsWith("image/") || !file.size) {
+    showToast("请选择有效的 PNG、JPEG 或 WebP 图片");
+    return;
+  }
+  const sourceUrl = isRemoteGeneratedImageUrl(entry.imageUrl) ? entry.imageUrl : entry.originalImageUrl;
+  const hadRuntimeImage = Boolean(entry.imageUrl);
+  try {
+    await saveGenerationImageCache(entry.id, sourceUrl, file);
+    const verified = await loadGenerationImageCache(entry.id);
+    if (!(verified?.blob instanceof Blob) || verified.blob.size !== file.size) throw new Error("本地图片缓存校验失败");
+    const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
+    if (!currentEntry || currentEntry.status !== "ready") {
+      await deleteGenerationImageCache(entry.id).catch(() => {});
+      return;
+    }
+    setGeneratedImageCacheMetadata(currentEntry, verified.blob, sourceUrl);
+    await persistGenerationHistory({ strict: true });
+    attachGeneratedImageBlob(currentEntry, verified.blob, sourceUrl);
+    await persistGenerationHistory();
+    if (hadRuntimeImage) syncGeneratedImageCacheSuccess(currentEntry);
+    else renderGenerationFeed({ openBatchId: currentEntry.batchId || `legacy_batch_${currentEntry.batchNumber || "00"}` });
+    showToast("已用本地图片补回缓存");
+  } catch {
+    await deleteGenerationImageCache(entry.id).catch(() => {});
+    const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
+    if (currentEntry?.status === "ready") {
+      currentEntry.imageCacheKey = "";
+      currentEntry.imageCacheStatus = "error";
+      currentEntry.imageCacheErrorCode = "storage_unavailable";
+      currentEntry.imageCacheErrorMessage = "本地图片写入 IndexedDB 失败，请检查浏览器存储权限或空间。";
+      currentEntry.imageMimeType = "";
+      currentEntry.imageByteSize = undefined;
+      await persistGenerationHistory();
+      renderGenerationFeed({ openBatchId: currentEntry.batchId || `legacy_batch_${currentEntry.batchNumber || "00"}` });
+    }
+    showToast("本地图片写入失败，请检查浏览器存储");
+  }
+}
+
+async function handleGeneratedImageRecoveryFile(file) {
+  const entry = state.generationEntries.find((item) => item.id === pendingImageRecoveryEntryId);
+  pendingImageRecoveryEntryId = "";
+  if (!entry || !file) return;
+  await cacheGeneratedImageFile(entry, file);
 }
 
 function resizeReferenceImage(file) {
@@ -2306,6 +2396,7 @@ $("comparisonGrid").addEventListener("click", (event) => {
 $("cancelResetBtn").addEventListener("click", closeResetDialog);
 $("confirmResetBtn").addEventListener("click", reset);
 $("referenceImage").addEventListener("change", (event) => handleFile(event.target.files?.[0]));
+$("imageRecoveryFileInput").addEventListener("change", (event) => handleGeneratedImageRecoveryFile(event.target.files?.[0]));
 $("removeFileBtn").addEventListener("click", removeReferenceImage);
 blueprintToggle.addEventListener("click", () => setBlueprintCollapsed(blueprintToggle.getAttribute("aria-expanded") === "true"));
 $("dropzone").addEventListener("dragover", (event) => { event.preventDefault(); if (!isGeneratingDirections) $("dropzone").classList.add("is-dragging"); });
@@ -2338,11 +2429,12 @@ generationFeed.addEventListener("error", (event) => {
   const card = event.target.closest("[data-generation-id]");
   if (!frame || !card) return;
   frame.classList.add("is-image-error");
-  if (frame.querySelector("[data-action='recover-image']")) return;
+  if (card.querySelector("[data-action='recover-image'], [data-action='recover-image-file']")) return;
   const entry = state.generationEntries.find((item) => item.id === card.dataset.generationId);
   if (!entry) return;
   const recovery = frame.querySelector(".generation-image-recovery");
-  recovery?.insertAdjacentHTML("beforeend", `<span class="button button-quiet" role="button" tabindex="0" data-action="recover-image">下载恢复</span>`);
+  const useLocalFile = entry.imageCacheErrorCode === "remote_unavailable";
+  recovery?.insertAdjacentHTML("beforeend", `<button class="button button-quiet" type="button" data-action="${useLocalFile ? "recover-image-file" : "recover-image"}">${useLocalFile ? "选择本地图片" : "下载恢复"}</button>`);
 }, true);
 $("resultSearchInput").addEventListener("input", (event) => { state.resultFilters.query = event.target.value; renderGenerationFeed(); });
 $("resultStatusFilter").addEventListener("change", (event) => { state.resultFilters.status = event.target.value; renderGenerationFeed(); });

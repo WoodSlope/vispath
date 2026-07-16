@@ -302,6 +302,7 @@ select { padding: 0 34px 0 11px; }
 .generation-state small { color: var(--muted); font-size: 9px; line-height: 1.5; }
 .generation-state.loading .state-marker { color: var(--accent); border-color: var(--accent); animation: pulse 1s ease-in-out infinite alternate; }
 .generation-state.error .state-marker { color: var(--danger); border-color: var(--danger-line); background: var(--danger-soft); }
+.generation-state .button { min-height: 30px; padding-inline: 10px; font-size: 10px; }
 .generation-image-open { position: relative; z-index: 1; display: grid; width: 100%; height: 100%; place-items: center; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
 .generation-image-frame { display: grid; width: min(100cqw, calc(100cqh * var(--generation-image-ratio))); height: min(100cqh, calc(100cqw / var(--generation-image-ratio))); max-width: 100%; max-height: 100%; place-items: center; box-shadow: 0 0 0 1px rgba(21,24,22,.42); }
 .generation-image-frame img { width: 100%; height: 100%; object-fit: contain; }
@@ -327,9 +328,10 @@ select { padding: 0 34px 0 11px; }
 .generation-card-meta > span { min-width: 0; overflow-wrap: anywhere; }
 .generation-card-meta > span:last-child { margin-left: auto; }
 .generation-image-diagnostics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 9px; }
-.generation-image-cache-error { display: flex; width: 100%; align-items: center; gap: 7px; padding: 7px 8px; border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent); background: color-mix(in srgb, var(--danger) 7%, var(--paper)); color: var(--ink); }
+.generation-image-cache-error { display: flex; width: 100%; flex-wrap: wrap; align-items: center; gap: 7px; padding: 7px 8px; border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent); background: color-mix(in srgb, var(--danger) 7%, var(--paper)); color: var(--ink); }
 .generation-image-cache-error strong { flex: 0 0 auto; color: var(--danger); }
 .generation-image-cache-error span { min-width: 0; flex: 1; color: var(--muted); }
+.generation-image-cache-error-actions { display: flex; flex: 0 0 auto; gap: 5px; margin-left: auto; }
 .generation-image-cache-error .button { min-height: 26px; padding-inline: 8px; font-size: 9px; }
 .generation-actual-size { color: var(--muted); }
 .generation-actual-size.is-match { color: var(--success); }
