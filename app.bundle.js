@@ -359,13 +359,13 @@ function clearApiSettings() {
   return runTransaction("readwrite", (store) => store.delete(API_SETTINGS_KEY));
 }
 
-function createImageRequest({ model, prompt, ratio, generationMode = "async" }) {
+function createImageRequest({ model, prompt, ratio, generationMode = "async", responseFormat = "b64_json" }) {
   const request = {
     model,
     prompt,
     n: 1,
     aspect_ratio: ratio || "1:1",
-    response_format: "url"
+    response_format: responseFormat === "url" ? "url" : "b64_json"
   };
   if (generationMode === "sync") {
     request.quality = "standard";
@@ -1390,6 +1390,12 @@ async function pollExistingImageTask(entry, headers) {
   }
 }
 
+function shouldFallbackToImageUrl(response, payload) {
+  if (![400, 404, 405, 422].includes(response.status)) return false;
+  const message = JSON.stringify(payload || {}).toLowerCase();
+  return /response[_ ]?format|b64_json|base64|unsupported|not supported|不支持|不兼容/.test(message);
+}
+
 async function requestGeneratedImage(entry) {
   if (shouldSimulateFailure(entry.promptSnapshot)) throw new Error("本地模拟故障：生成服务暂时不可用");
   if (!hasBrowserImageApi()) throw new Error("请先在右上角 API 配置中填写生图服务");
@@ -1397,13 +1403,16 @@ async function requestGeneratedImage(entry) {
   if (entry.taskId) return pollExistingImageTask(entry, headers);
   const generationMode = entry.generationMode === "sync" ? "sync" : "async";
   const url = `${getImageApiBaseUrl()}/images/generations${generationMode === "async" ? "/async" : ""}`;
-  const body = createImageRequest({
-    model: resolveImageModel(state.apiSettings, entry.resolution),
-    prompt: entry.promptSnapshot,
-    ratio: entry.ratio,
-    generationMode
-  });
+  let responseFormat = "b64_json";
+  let formatFallbackUsed = false;
   for (let attempt = 0; attempt <= IMAGE_RETRY_DELAYS.length; attempt += 1) {
+    const body = createImageRequest({
+      model: resolveImageModel(state.apiSettings, entry.resolution),
+      prompt: entry.promptSnapshot,
+      ratio: entry.ratio,
+      generationMode,
+      responseFormat
+    });
     let response;
     try {
       response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
@@ -1428,6 +1437,12 @@ async function requestGeneratedImage(entry) {
       if (result.b64_json) return { imageUrl: `data:image/png;base64,${result.b64_json}`, requestId, actualResponseFormat: "b64_json" };
       if (result.url) return { imageUrl: result.url, requestId, actualResponseFormat: "url" };
       throw new Error("同步生图服务未返回图片");
+    }
+    if (!formatFallbackUsed && responseFormat === "b64_json" && shouldFallbackToImageUrl(response, payload)) {
+      formatFallbackUsed = true;
+      responseFormat = "url";
+      attempt = -1;
+      continue;
     }
     const message = (typeof payload.error === "string" ? payload.error : payload.error?.message) || payload.message || `图片生成失败（HTTP ${response.status}）`;
     if ([429, 502, 503].includes(response.status) && attempt < IMAGE_RETRY_DELAYS.length) {
