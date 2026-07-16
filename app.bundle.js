@@ -379,6 +379,7 @@ let pendingRetryEntryId = "";
 let historySaveQueue = Promise.resolve();
 let generationQueue = Promise.resolve();
 let imageCacheQueue = Promise.resolve();
+let historyImageCacheQueue = Promise.resolve();
 let textTooltipSyncFrame = 0;
 const IMAGE_CLEANUP_KEY = "ai-visual-direction-board-pending-image-cleanup";
 const OPEN_BATCHES_KEY = "vispath-open-generation-batches";
@@ -491,12 +492,25 @@ function downloadGeneratedImageBlob(entry, blob) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
+function isRemoteGeneratedImageUrl(imageUrl) {
+  if (typeof imageUrl !== "string" || !imageUrl.trim()) return false;
+  try {
+    return ["http:", "https:"].includes(new URL(imageUrl, window.location.href).protocol);
+  } catch {
+    return false;
+  }
+}
+
 async function cacheGeneratedImage(entry) {
   const imageUrl = entry.imageUrl;
-  const blob = await fetchGeneratedImageBlob(imageUrl);
   const currentEntry = state.generationEntries.find((item) => item.id === entry.id);
   if (!currentEntry || currentEntry.status !== "ready" || currentEntry.imageUrl !== imageUrl) return;
-  await saveGenerationImageCache(currentEntry.id, imageUrl, blob);
+  const cached = await loadGenerationImageCache(currentEntry.id).catch(() => null);
+  if (cached?.imageUrl === imageUrl && cached.blob instanceof Blob && cached.blob.size > 0) return;
+  const blob = await fetchGeneratedImageBlob(imageUrl);
+  const latestEntry = state.generationEntries.find((item) => item.id === entry.id);
+  if (!latestEntry || latestEntry.status !== "ready" || latestEntry.imageUrl !== imageUrl) return;
+  await saveGenerationImageCache(latestEntry.id, imageUrl, blob);
 }
 
 function queueGeneratedImageCache(entry) {
@@ -504,6 +518,17 @@ function queueGeneratedImageCache(entry) {
     .then(() => cacheGeneratedImage(entry))
     .catch(() => {});
   return imageCacheQueue;
+}
+
+function queueGenerationHistoryImageCache(entries) {
+  entries
+    .filter((entry) => entry.status === "ready" && isRemoteGeneratedImageUrl(entry.imageUrl))
+    .forEach((entry) => {
+      historyImageCacheQueue = historyImageCacheQueue
+        .then(() => cacheGeneratedImage(entry))
+        .catch(() => {});
+    });
+  return historyImageCacheQueue;
 }
 
 function fillApiSettingsForm(settings = {}) {
@@ -1470,6 +1495,7 @@ async function restoreGenerationHistory() {
     generationHistoryLoaded = true;
     renderGenerationFeed();
     if (saved && (saved.migrated || interruptedCount || state.generationEntries.length !== savedEntries.length)) await persistGenerationHistory();
+    queueGenerationHistoryImageCache(state.generationEntries);
     if (state.generationEntries.length) {
       $("feedHint").textContent = `已恢复 ${state.generationEntries.length} 条 · ${groupGenerationEntries().length} 个批次 · 当前浏览器`;
       if (window.matchMedia("(min-width: 901px)").matches) goToStage("resultStage", { resetScroll: true });
