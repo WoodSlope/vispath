@@ -401,6 +401,7 @@ const resetDialog = $("resetDialog");
 const editSetupDialog = $("editSetupDialog");
 const historyDialog = $("historyDialog");
 const retryGenerationDialog = $("retryGenerationDialog");
+const imageRecoveryOptionsDialog = $("imageRecoveryOptionsDialog");
 const imagePreviewDialog = $("imagePreviewDialog");
 const comparisonDialog = $("comparisonDialog");
 const imageRatioSelect = $("imageRatio");
@@ -499,11 +500,14 @@ function renderActualImageSize(entry) {
 function renderGeneratedImageCacheStatus(entry) {
   if (entry.imageCacheStatus !== "error") return "";
   const remoteUnavailable = entry.imageCacheErrorCode === "remote_unavailable";
-  const title = remoteUnavailable ? "远程图片无法读取或已过期" : "浏览器本地缓存写入失败";
+  const title = remoteUnavailable ? "临时图片链接无法长期保存" : "浏览器本地缓存写入失败";
   const message = entry.imageCacheErrorMessage || (remoteUnavailable
-    ? "当前地址可能已过期或被 CORS 拦截，可选择已保存的本地图片补回。"
+    ? "当前地址已失效或无法写入浏览器缓存，可重新生成或查看恢复选项。"
     : "当前图片仍可使用，恢复浏览器存储后可重新缓存。");
-  return `<span class="generation-image-cache-error" role="status"><strong>${title}</strong><span>${escapeHtml(message)}</span><span class="generation-image-cache-error-actions">${remoteUnavailable ? "" : '<button class="button button-quiet" type="button" data-action="retry-image-cache">重新缓存</button>'}<button class="button button-quiet" type="button" data-action="recover-image-file">选择本地图片</button></span></span>`;
+  const action = remoteUnavailable
+    ? '<button class="button button-quiet" type="button" data-action="open-image-recovery">恢复选项</button>'
+    : '<button class="button button-quiet" type="button" data-action="retry-image-cache">重新缓存</button>';
+  return `<span class="generation-image-cache-error" role="status"><strong>${title}</strong><span>${escapeHtml(message)}</span><span class="generation-image-cache-error-actions">${action}</span></span>`;
 }
 
 function isGeneratedImageMissing(entry) {
@@ -1301,7 +1305,7 @@ function renderGenerationFeed({ openBatchId = "" } = {}) {
         </div>
       </div>
       <div class="generation-art ${escapeHtml(entry.artClass)} ${entry.status === "loading" ? "is-loading" : ""}">
-        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><span class="generation-image-frame" style="--generation-image-ratio:${getDisplayAspectRatio(entry).toFixed(6)}"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span class="generation-image-recovery" role="status"><strong>图片未加载</strong><small>可选择本地图片补回</small></span></span><span class="generation-image-open-label">查看大图</span></button>` : isGeneratedImageMissing(entry) ? `<div class="generation-state error" role="status"><span class="state-marker" aria-hidden="true">!</span><strong>本地图片缓存已丢失</strong><small>选择已保存的本地图片补回，或重新生成</small><button class="button button-quiet" type="button" data-action="recover-image-file">选择本地图片</button></div>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
+        ${entry.imageUrl ? `<button class="generation-image-open" type="button" data-action="open-image" aria-label="查看${escapeHtml(entry.variantTitle)}大图"><span class="generation-ratio-badge" aria-hidden="true">${escapeHtml(entry.ratio || "未设比例")}</span><span class="generation-image-frame" style="--generation-image-ratio:${getDisplayAspectRatio(entry).toFixed(6)}"><img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.variantTitle)}生成结果"><span class="generation-image-recovery" role="status"><strong>图片未加载</strong><small>临时链接可能已失效</small></span></span><span class="generation-image-open-label">查看大图</span></button>` : isGeneratedImageMissing(entry) ? `<div class="generation-state error" role="status"><span class="state-marker" aria-hidden="true">!</span><strong>本地图片缓存已丢失</strong><small>可重新生成，或通过恢复选项关联已有备份</small><button class="button button-quiet" type="button" data-action="open-image-recovery">恢复选项</button></div>` : `<div class="generation-state ${escapeHtml(entry.status)}" role="status"><span class="state-marker" aria-hidden="true">${entry.status === "error" ? "!" : "···"}</span><strong>${entry.status === "error" ? "生成未完成" : "正在生成图片"}</strong><small>${entry.status === "error" ? "查看失败原因，再决定是否重试" : "可以离开当前页面继续创建其他方案"}</small></div>`}
       </div>
       <div class="generation-body">
         <div class="generation-card-meta"><span>请求 ${escapeHtml(entry.resolution || "1K")} · ${escapeHtml(entry.ratio || "未设比例")} · ${entry.generationMode === "sync" ? "同步" : "异步"}${entry.actualResponseFormat ? ` · 实际返回 ${entry.actualResponseFormat === "b64_json" ? "Base64" : "URL"}` : ""}</span><span>${entry.status !== "loading" && entry.startedAt && entry.completedAt ? `耗时 ${escapeHtml(formatGenerationElapsed(entry.startedAt, entry.completedAt))}` : "等待生成结果"}</span></div>
@@ -1567,6 +1571,31 @@ function openRetryGenerationDialog(entry) {
 function closeRetryGenerationDialog() {
   pendingRetryEntryId = "";
   retryGenerationDialog.close();
+}
+
+function openImageRecoveryOptions(entry) {
+  pendingImageRecoveryEntryId = entry.id;
+  $("imageRecoveryOptionsTitle").textContent = `处理“${entry.variantTitle || "失效图片"}”`;
+  showDialogAtTop(imageRecoveryOptionsDialog);
+  $("regenerateFromRecoveryBtn").focus();
+}
+
+function closeImageRecoveryOptions({ clearEntry = true } = {}) {
+  imageRecoveryOptionsDialog.close();
+  if (clearEntry) pendingImageRecoveryEntryId = "";
+}
+
+function recoverImageFromLocalBackup() {
+  if (!pendingImageRecoveryEntryId) return;
+  closeImageRecoveryOptions({ clearEntry: false });
+  $("imageRecoveryFileInput").value = "";
+  $("imageRecoveryFileInput").click();
+}
+
+function regenerateFromImageRecovery() {
+  const entry = state.generationEntries.find((item) => item.id === pendingImageRecoveryEntryId);
+  closeImageRecoveryOptions();
+  if (entry) openRetryGenerationDialog(entry);
 }
 
 function openImagePreview(entry) {
@@ -2045,10 +2074,8 @@ function handleGenerationAction(event) {
     showToast("正在重新缓存图片");
     return;
   }
-  if (button.dataset.action === "recover-image-file") {
-    pendingImageRecoveryEntryId = entry.id;
-    $("imageRecoveryFileInput").value = "";
-    $("imageRecoveryFileInput").click();
+  if (button.dataset.action === "open-image-recovery") {
+    openImageRecoveryOptions(entry);
     return;
   }
   if (button.dataset.action === "toggle-favorite") {
@@ -2375,10 +2402,14 @@ $("cleanupHistoryBtn").addEventListener("click", cleanupOldHistory);
 $("cancelHistoryBtn").addEventListener("click", () => historyDialog.close());
 $("cancelRetryGenerationBtn").addEventListener("click", closeRetryGenerationDialog);
 $("confirmRetryGenerationBtn").addEventListener("click", confirmRetryGeneration);
+$("cancelImageRecoveryBtn").addEventListener("click", () => closeImageRecoveryOptions());
+$("recoverImageFromFileBtn").addEventListener("click", recoverImageFromLocalBackup);
+$("regenerateFromRecoveryBtn").addEventListener("click", regenerateFromImageRecovery);
 document.querySelectorAll("[data-dialog-close]").forEach((button) => {
   button.addEventListener("click", () => {
     const dialog = button.closest("dialog");
     if (dialog === retryGenerationDialog) closeRetryGenerationDialog();
+    else if (dialog === imageRecoveryOptionsDialog) closeImageRecoveryOptions();
     else if (dialog === clearApiSettingsDialog) cancelClearApiSettings();
     else if (dialog === editSetupDialog) closeEditSetupDialog();
     else dialog?.close();
@@ -2429,12 +2460,12 @@ generationFeed.addEventListener("error", (event) => {
   const card = event.target.closest("[data-generation-id]");
   if (!frame || !card) return;
   frame.classList.add("is-image-error");
-  if (card.querySelector("[data-action='recover-image'], [data-action='recover-image-file']")) return;
+  if (card.querySelector("[data-action='recover-image'], [data-action='open-image-recovery']")) return;
   const entry = state.generationEntries.find((item) => item.id === card.dataset.generationId);
   if (!entry) return;
   const recovery = frame.querySelector(".generation-image-recovery");
-  const useLocalFile = entry.imageCacheErrorCode === "remote_unavailable";
-  recovery?.insertAdjacentHTML("beforeend", `<button class="button button-quiet" type="button" data-action="${useLocalFile ? "recover-image-file" : "recover-image"}">${useLocalFile ? "选择本地图片" : "下载恢复"}</button>`);
+  const useRecoveryOptions = entry.imageCacheErrorCode === "remote_unavailable";
+  recovery?.insertAdjacentHTML("beforeend", `<button class="button button-quiet" type="button" data-action="${useRecoveryOptions ? "open-image-recovery" : "recover-image"}">${useRecoveryOptions ? "恢复选项" : "下载恢复"}</button>`);
 }, true);
 $("resultSearchInput").addEventListener("input", (event) => { state.resultFilters.query = event.target.value; renderGenerationFeed(); });
 $("resultStatusFilter").addEventListener("change", (event) => { state.resultFilters.status = event.target.value; renderGenerationFeed(); });

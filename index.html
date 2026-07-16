@@ -376,6 +376,26 @@
     </div>
   </dialog>
 
+  <dialog class="confirm-dialog" id="imageRecoveryOptionsDialog" aria-labelledby="imageRecoveryOptionsTitle" aria-describedby="imageRecoveryOptionsDescription">
+    <div class="confirm-dialog-body">
+      <div class="confirm-dialog-head">
+        <div class="title-pair dialog-title">
+          <span class="step-label">IMAGE RECOVERY</span>
+          <h2 id="imageRecoveryOptionsTitle">处理失效图片</h2>
+        </div>
+        <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭图片恢复选项" title="关闭图片恢复选项"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="confirm-dialog-content">
+        <p id="imageRecoveryOptionsDescription">临时图片链接已失效或无法保存。建议重新生成；若此前保存过图片，可从本地备份恢复到当前记录。</p>
+      </div>
+      <div class="confirm-dialog-actions image-recovery-actions">
+        <button class="button" id="cancelImageRecoveryBtn" type="button">取消</button>
+        <button class="button" id="recoverImageFromFileBtn" type="button">从本地备份恢复</button>
+        <button class="button button-danger" id="regenerateFromRecoveryBtn" type="button">重新生成</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog class="image-preview-dialog" id="imagePreviewDialog" aria-labelledby="imagePreviewTitle">
     <div class="image-preview-shell">
       <div class="image-preview-head">
@@ -401,6 +421,6 @@
 
   <input id="imageRecoveryFileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
   <div class="toast" id="toast" role="status"></div>
-  <script src="app.bundle.js?v=7555cdda7594"></script>
+  <script src="app.bundle.js?v=850c7ad21ce5"></script>
 </body>
 </html>
