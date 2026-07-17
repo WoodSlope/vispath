@@ -104,11 +104,14 @@
             <div class="form-field">
               <label for="imageRatio">画幅比例</label>
               <div class="select-control"><select id="imageRatio">
-                <option value="1:1">1:1</option>
-                <option value="3:4" selected>3:4</option>
-                <option value="4:3">4:3</option>
-                <option value="16:9">16:9</option>
-                <option value="9:16">9:16</option>
+                <option value="1:1">1:1 · 1024 × 1024</option>
+                <option value="16:9">16:9 · 1792 × 1024</option>
+                <option value="9:16">9:16 · 1024 × 1792</option>
+                <option value="4:3">4:3 · 1024 × 768</option>
+                <option value="3:4" selected>3:4 · 768 × 1024</option>
+                <option value="3:2">3:2 · 1536 × 1024</option>
+                <option value="2:3">2:3 · 1024 × 1536</option>
+                <option value="21:9">21:9 · 1344 × 576</option>
               </select></div>
             </div>
           </div>
@@ -237,7 +240,7 @@
           <label class="form-field" for="imageBaseUrlInput"><span class="form-field-label-row"><span>API 地址</span><small id="imageBaseUrlHint">填写到 /v1</small></span><input id="imageBaseUrlInput" type="url" placeholder="https://image-api.example/v1" aria-describedby="imageBaseUrlHint imageBaseUrlError"><small class="field-error hidden" id="imageBaseUrlError" role="alert">填写生图 API Key 时必须同时填写地址。</small></label>
           <div class="form-field"><label for="imageApiKeyInput">API Key</label><span class="api-key-control"><input id="imageApiKeyInput" type="password" autocomplete="off"><button class="api-key-visibility" id="imageApiKeyVisibilityBtn" type="button" data-api-key-input="imageApiKeyInput" data-api-key-name="生图" aria-controls="imageApiKeyInput" aria-pressed="false" aria-label="显示生图 API Key">显示</button></span></div>
           <label class="form-field" for="imageModelInput"><span>模型</span><input id="imageModelInput" type="text" value="gpt-image-2"></label>
-          <label class="form-field" for="imageGenerationModeInput"><span>生成方式</span><span class="select-control"><select id="imageGenerationModeInput"><option value="async" selected>异步图片生成 · 推荐</option><option value="sync">同步图片生成</option></select></span></label>
+          <label class="form-field" for="imageGenerationModeInput"><span>生成方式</span><span class="select-control"><select id="imageGenerationModeInput"><option value="sync" selected>同步图片生成</option><option value="async">异步图片生成</option></select></span></label>
         </section>
         </div>
         <details class="api-protocol-summary" id="apiProtocolSummary">
@@ -435,6 +438,6 @@
 
   <input id="imageRecoveryFileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
   <div class="toast" id="toast" role="status"></div>
-  <script src="app.bundle.js?v=59d9890097d2"></script>
+  <script src="app.bundle.js?v=71c3ce1ff2b8"></script>
 </body>
 </html>

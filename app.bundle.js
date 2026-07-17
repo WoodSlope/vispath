@@ -353,7 +353,7 @@ function saveApiSettings(settings) {
     imageBaseUrl: String(settings?.imageBaseUrl || legacyBaseUrl || "").trim().replace(/\/+$/, ""),
     imageApiKey: String(settings?.imageApiKey || "").trim(),
     imageModel: String(settings?.imageModel || "gpt-image-2").trim(),
-    imageGenerationMode: settings?.imageGenerationMode === "sync" ? "sync" : "async"
+    imageGenerationMode: settings?.imageGenerationMode === "async" ? "async" : "sync"
   };
   return runTransaction("readwrite", (store) => store.put(clean, API_SETTINGS_KEY));
 }
@@ -362,11 +362,27 @@ function clearApiSettings() {
   return runTransaction("readwrite", (store) => store.delete(API_SETTINGS_KEY));
 }
 
+const IMAGE_SIZE_BY_RATIO = Object.freeze({
+  "1:1": "1024x1024",
+  "16:9": "1792x1024",
+  "9:16": "1024x1792",
+  "4:3": "1024x768",
+  "3:4": "768x1024",
+  "3:2": "1536x1024",
+  "2:3": "1024x1536",
+  "21:9": "1344x576"
+});
+
+function getImageSizeForRatio(ratio) {
+  return IMAGE_SIZE_BY_RATIO[ratio] || IMAGE_SIZE_BY_RATIO["1:1"];
+}
+
 function createImageRequest({ model, prompt, ratio, generationMode = "async", responseFormat = "b64_json" }) {
   const request = {
     model,
     prompt,
     n: 1,
+    size: getImageSizeForRatio(ratio),
     aspect_ratio: ratio || "1:1",
     response_format: responseFormat === "url" ? "url" : "b64_json"
   };
@@ -931,7 +947,7 @@ function fillApiSettingsForm(settings = {}) {
   $("imageBaseUrlInput").value = settings.imageBaseUrl || settings.apiBaseUrl || "";
   $("imageApiKeyInput").value = settings.imageApiKey || "";
   $("imageModelInput").value = settings.imageModel || "gpt-image-2";
-  $("imageGenerationModeInput").value = settings.imageGenerationMode === "sync" ? "sync" : "async";
+  $("imageGenerationModeInput").value = settings.imageGenerationMode === "async" ? "async" : "sync";
   resetApiKeyVisibility();
 }
 

@@ -468,7 +468,7 @@ body:has(#promptStage.is-stage-active) .toast { bottom: calc(var(--toast-block-i
 .api-settings-grid input { padding: 0 10px; }
 .api-key-control { position: relative; display: block; min-width: 0; }
 .api-key-control input { padding-right: 48px; }
-.api-key-visibility { position: absolute; top: 0; right: 0; display: inline-flex; min-width: 44px; min-height: var(--control-height); align-items: center; justify-content: center; padding: 0 8px; border: 0; border-left: 1px solid var(--line); color: var(--muted); background: transparent; font-size: 9px; font-weight: 700; }
+.api-key-visibility { position: absolute; top: 0; right: 0; display: inline-flex; min-width: 44px; min-height: var(--control-height); align-items: center; justify-content: center; padding: 0 8px; border: 1px solid var(--line-strong); border-left-color: var(--line); color: var(--muted); background: transparent; font-size: 9px; font-weight: 700; }
 .api-key-visibility:hover { color: var(--accent); background: var(--surface); }
 .api-key-visibility:active { color: var(--ink); background: var(--surface-strong); }
 .api-key-visibility:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
