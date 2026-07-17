@@ -62,14 +62,27 @@
             <label class="field-label-inline" for="referenceImage"><span>参考图</span><small class="label-helper">可选 · 点击、拖入或 ⌘V / Ctrl+V 粘贴图片</small></label>
             <label class="dropzone" for="referenceImage" id="dropzone">
               <span class="dropzone-icon" aria-hidden="true">+</span>
-              <span><strong>上传一张参考图</strong><small>PNG / JPG，首版仅用于模拟结构提取</small></span>
+              <span><strong>上传一张参考图</strong><small>PNG / JPG / WebP，最多 1 张</small></span>
               <input id="referenceImage" type="file" accept="image/png,image/jpeg,image/webp">
             </label>
             <div class="file-preview hidden" id="filePreview">
               <img id="filePreviewImage" alt="已上传参考图预览">
-              <div><strong id="fileName"></strong><small>参考图已加入本轮输入</small></div>
+              <div><strong id="fileName"></strong><small id="referenceUsageSummary">仅用于分析提示词</small></div>
               <button class="icon-button" id="removeFileBtn" type="button" aria-label="移除参考图" title="移除参考图"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
+            <fieldset class="reference-usage hidden" id="referenceUsageField">
+              <legend>参考图用途</legend>
+              <div class="reference-usage-options">
+                <label class="reference-usage-option" for="referenceUsageAnalyze">
+                  <input id="referenceUsageAnalyze" type="radio" name="referenceUsage" value="analyze" checked>
+                  <span><strong>仅分析提示词</strong><small>不发送给生图接口</small></span>
+                </label>
+                <label class="reference-usage-option" for="referenceUsageExplore">
+                  <input id="referenceUsageExplore" type="radio" name="referenceUsage" value="explore">
+                  <span><strong>参与生图探索</strong><small>作为图片1参与生成</small></span>
+                </label>
+              </div>
+            </fieldset>
           </div>
           </section>
 
@@ -247,8 +260,8 @@
         <summary><strong>固定接口规则</strong><span>· Responses · 同步 / 异步 · 自动查询</span></summary>
         <dl>
           <div><dt>文字协议</dt><dd>Responses · 非流式 · <code>/responses</code></dd></div>
-          <div><dt>同步图片</dt><dd><code>/images/generations</code> · 直接读取结果</dd></div>
-          <div><dt>异步图片</dt><dd><code>/images/generations/async</code> · 返回 task_id</dd></div>
+          <div><dt>同步图片</dt><dd><code>/images/generations</code> / <code>/images/edits</code> · 直接读取结果</dd></div>
+          <div><dt>异步图片</dt><dd><code>/images/generations/async</code> / <code>/images/edits/async</code> · 返回 task_id</dd></div>
           <div><dt>任务查询</dt><dd><code>/images/tasks/{task_id}</code> · 自动轮询</dd></div>
           <div><dt>图片格式</dt><dd>默认请求 Base64 · 自动兼容 URL / Base64，以实际响应为准</dd></div>
           <div><dt>连接要求</dt><dd>中转站需允许浏览器 CORS 请求</dd></div>
@@ -438,6 +451,6 @@
 
   <input id="imageRecoveryFileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
   <div class="toast" id="toast" role="status"></div>
-  <script src="app.bundle.js?v=71c3ce1ff2b8"></script>
+  <script src="app.bundle.js?v=f3bcf7937e21"></script>
 </body>
 </html>
