@@ -251,6 +251,20 @@
           <div><dt>连接要求</dt><dd>中转站需允许浏览器 CORS 请求</dd></div>
         </dl>
         </details>
+        <details class="image-diagnostic-panel" id="imageDiagnosticPanel">
+          <summary><strong>最近一次生图诊断</strong><span id="imageDiagnosticUpdatedAt">暂无记录</span></summary>
+          <dl>
+            <div><dt>请求方式</dt><dd id="imageDiagnosticRequestMode">未记录</dd></div>
+            <div><dt>请求接口</dt><dd id="imageDiagnosticEndpointPath">未记录</dd></div>
+            <div><dt>请求格式</dt><dd id="imageDiagnosticRequestedFormat">未记录</dd></div>
+            <div><dt>实际返回</dt><dd id="imageDiagnosticActualFormat">未记录</dd></div>
+            <div><dt>图片来源</dt><dd id="imageDiagnosticImageHost">未记录</dd></div>
+            <div><dt>保存方式</dt><dd id="imageDiagnosticStorageBackend">未记录</dd></div>
+            <div><dt>保存结果</dt><dd id="imageDiagnosticStorageStatus">未记录</dd></div>
+            <div><dt>刷新恢复</dt><dd id="imageDiagnosticRestoreStatus">未记录</dd></div>
+            <div class="image-diagnostic-error"><dt>失败原因</dt><dd id="imageDiagnosticFailureReason">无</dd></div>
+          </dl>
+        </details>
         <div class="brand-attribution" aria-label="项目归属与版权">
           <strong>VisPath · LINPO LAB</strong>
           <span>© 2026 LINPO LAB. All rights reserved.</span>
@@ -421,6 +435,6 @@
 
   <input id="imageRecoveryFileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
   <div class="toast" id="toast" role="status"></div>
-  <script src="app.bundle.js?v=f9a6d7f6a428"></script>
+  <script src="app.bundle.js?v=59d9890097d2"></script>
 </body>
 </html>

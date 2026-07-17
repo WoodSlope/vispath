@@ -417,6 +417,7 @@ let textTooltipSyncFrame = 0;
 const IMAGE_CLEANUP_KEY = "ai-visual-direction-board-pending-image-cleanup";
 const OPEN_BATCHES_KEY = "vispath-open-generation-batches";
 const OPAQUE_IMAGE_CACHE_NAME = "vispath-generated-images-v1";
+const VISPATH_IMAGE_DIAGNOSTIC_KEY = "vispath-last-image-diagnostic";
 const IMAGE_CLEANUP_DELAY = 5500;
 const IMAGE_POLL_INTERVAL = 3000;
 const IMAGE_RETRY_DELAYS = [5000, 15000];
@@ -436,6 +437,61 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function loadLastImageDiagnostic() {
+  try {
+    const value = JSON.parse(localStorage.getItem(VISPATH_IMAGE_DIAGNOSTIC_KEY) || "null");
+    return value && typeof value === "object" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function getDiagnosticImageHost(value) {
+  try {
+    return new URL(value).host || "API 响应";
+  } catch {
+    return "API 响应";
+  }
+}
+
+function getDiagnosticFailureReason(code = "request_failed") {
+  if (code === "remote_unavailable") return "图片 URL 无法读取（CORS、网络或链接失效）";
+  if (code === "storage_unavailable") return "IndexedDB 图片写入失败";
+  if (code === "missing_source") return "本地图片缓存和原始来源均不可用";
+  if (code === "restore_failed") return "浏览器图片缓存读取失败";
+  return "生图请求失败";
+}
+
+function renderLastImageDiagnostic() {
+  const diagnostic = loadLastImageDiagnostic();
+  const values = {
+    imageDiagnosticRequestMode: diagnostic?.requestMode,
+    imageDiagnosticEndpointPath: diagnostic?.endpointPath,
+    imageDiagnosticRequestedFormat: diagnostic?.requestedFormat,
+    imageDiagnosticActualFormat: diagnostic?.actualFormat,
+    imageDiagnosticImageHost: diagnostic?.imageHost,
+    imageDiagnosticStorageBackend: diagnostic?.storageBackend,
+    imageDiagnosticStorageStatus: diagnostic?.storageStatus,
+    imageDiagnosticRestoreStatus: diagnostic?.restoreStatus,
+    imageDiagnosticFailureReason: diagnostic?.failureReason || "无"
+  };
+  for (const [id, value] of Object.entries(values)) {
+    const element = $(id);
+    if (element) element.textContent = value || "未记录";
+  }
+  const updatedAt = $("imageDiagnosticUpdatedAt");
+  if (updatedAt) updatedAt.textContent = diagnostic?.updatedAt ? new Date(diagnostic.updatedAt).toLocaleString() : "暂无记录";
+}
+
+function saveLastImageDiagnostic(patch, expectedEntryId = "") {
+  const previous = loadLastImageDiagnostic();
+  if (expectedEntryId && previous?.entryId !== expectedEntryId) return previous;
+  const next = { ...(previous || {}), ...patch, updatedAt: new Date().toISOString() };
+  localStorage.setItem(VISPATH_IMAGE_DIAGNOSTIC_KEY, JSON.stringify(next));
+  renderLastImageDiagnostic();
+  return next;
 }
 
 function readOpenGenerationBatchIds() {
@@ -728,6 +784,7 @@ async function cacheGeneratedImage(entry) {
     }
     attachGeneratedImageBlob(latestEntry, blob, imageUrl);
     await persistGenerationHistory();
+    saveLastImageDiagnostic({ storageBackend: "IndexedDB", storageStatus: "成功", restoreStatus: "尚未验证", failureReason: "" }, entry.id);
     syncGeneratedImageCacheSuccess(latestEntry);
   } catch (error) {
     await deleteGenerationImageCache(entry.id).catch(() => {});
@@ -743,6 +800,7 @@ async function cacheGeneratedImage(entry) {
           }
           setGeneratedImageOpaqueCacheMetadata(opaqueEntry, imageUrl);
           await persistGenerationHistory({ strict: true });
+          saveLastImageDiagnostic({ storageBackend: "Cache Storage", storageStatus: "成功", restoreStatus: "尚未验证", failureReason: "" }, entry.id);
           syncGeneratedImageCacheSuccess(opaqueEntry);
           showToast("临时图片已保存到浏览器缓存");
           return;
@@ -759,6 +817,12 @@ async function cacheGeneratedImage(entry) {
         : "IndexedDB 暂时不可用或写入失败，请恢复浏览器存储后重试。";
       currentEntry.imageMimeType = "";
       currentEntry.imageByteSize = undefined;
+      saveLastImageDiagnostic({
+        storageBackend: currentEntry.imageCacheErrorCode === "remote_unavailable" ? "Cache Storage" : "IndexedDB",
+        storageStatus: "失败",
+        restoreStatus: "尚未验证",
+        failureReason: getDiagnosticFailureReason(currentEntry.imageCacheErrorCode)
+      }, entry.id);
       await persistGenerationHistory();
       renderGenerationFeed({ openBatchId: currentEntry.batchId || `legacy_batch_${currentEntry.batchNumber || "00"}` });
       showToast(currentEntry.imageCacheErrorCode === "remote_unavailable"
@@ -805,6 +869,7 @@ async function restoreGenerationHistoryImages(entries) {
         || entry.imageMimeType !== expectedMimeType
         || entry.imageByteSize !== cached.blob.size) normalized = true;
       attachGeneratedImageBlob(entry, cached.blob, sourceUrl);
+      saveLastImageDiagnostic({ restoreStatus: "成功", failureReason: "" }, entry.id);
       continue;
     }
     const opaqueSourceUrl = isRemoteGeneratedImageUrl(entry.originalImageUrl) ? entry.originalImageUrl : entry.imageUrl;
@@ -820,6 +885,7 @@ async function restoreGenerationHistoryImages(entries) {
           || entry.imageMimeType
           || entry.imageByteSize !== undefined) normalized = true;
         setGeneratedImageOpaqueCacheMetadata(entry, opaqueSourceUrl);
+        saveLastImageDiagnostic({ restoreStatus: "成功", failureReason: "" }, entry.id);
         continue;
       }
       entry.imageCacheBackend = "";
@@ -836,6 +902,7 @@ async function restoreGenerationHistoryImages(entries) {
       entry.imageCacheErrorMessage = "本地图片缓存和原始来源均不可用。";
       entry.imageMimeType = "";
       entry.imageByteSize = undefined;
+      saveLastImageDiagnostic({ restoreStatus: "失败", failureReason: getDiagnosticFailureReason("missing_source") }, entry.id);
     }
   }
   return normalized;
@@ -1603,6 +1670,18 @@ async function requestGeneratedImage(entry) {
   const url = `${getImageApiBaseUrl()}/images/generations${generationMode === "async" ? "/async" : ""}`;
   let responseFormat = "b64_json";
   let formatFallbackUsed = false;
+  saveLastImageDiagnostic({
+    entryId: entry.id,
+    requestMode: generationMode === "async" ? "异步" : "同步",
+    endpointPath: generationMode === "async" ? "/images/generations/async" : "/images/generations",
+    requestedFormat: "Base64",
+    actualFormat: "等待响应",
+    imageHost: "等待响应",
+    storageBackend: "等待保存",
+    storageStatus: "等待保存",
+    restoreStatus: "尚未验证",
+    failureReason: ""
+  });
   for (let attempt = 0; attempt <= IMAGE_RETRY_DELAYS.length; attempt += 1) {
     const body = createImageRequest({
       model: resolveImageModel(state.apiSettings, entry.resolution),
@@ -1639,6 +1718,7 @@ async function requestGeneratedImage(entry) {
     if (!formatFallbackUsed && responseFormat === "b64_json" && shouldFallbackToImageUrl(response, payload)) {
       formatFallbackUsed = true;
       responseFormat = "url";
+      saveLastImageDiagnostic({ requestedFormat: "URL（Base64 不兼容后回退）" }, entry.id);
       attempt = -1;
       continue;
     }
@@ -1672,10 +1752,17 @@ async function runGeneration(entry) {
     entry.taskStatus = "completed";
     entry.taskProgress = "100%";
     entry.errorMessage = "";
+    saveLastImageDiagnostic({
+      actualFormat: result.actualResponseFormat === "b64_json" ? "Base64" : "URL",
+      imageHost: result.actualResponseFormat === "b64_json" ? "API 响应" : getDiagnosticImageHost(result.imageUrl),
+      storageStatus: "保存中",
+      failureReason: ""
+    }, entry.id);
   } catch (error) {
     entry.status = "error";
     entry.errorMessage = error.message || "图片生成失败，请重试";
     entry.requestId = error.requestId || entry.requestId || "";
+    saveLastImageDiagnostic({ storageStatus: "未开始", failureReason: getDiagnosticFailureReason("request_failed") }, entry.id);
   }
   entry.completedAt = new Date().toISOString();
   renderGenerationFeed();
@@ -2543,6 +2630,7 @@ $("apiSettingsBtn").addEventListener("click", () => {
   clearApiBaseUrlErrors();
   setApiTestStatus("text", "neutral", "未测试");
   setApiTestStatus("image", "neutral", "未测试");
+  renderLastImageDiagnostic();
   showDialogAtTop(apiSettingsDialog);
   $("textBaseUrlInput").focus();
 });
@@ -2659,6 +2747,7 @@ syncDefaultImageRatio();
 setActiveStage("setupStage");
 renderPromptCards();
 renderGenerationFeed();
+renderLastImageDiagnostic();
 loadSavedApiSettings().then(async () => {
   checkImageService();
   registerGeneratedImageServiceWorker()?.catch(() => {});

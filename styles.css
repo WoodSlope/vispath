@@ -454,6 +454,16 @@ body:has(#promptStage.is-stage-active) .toast { bottom: calc(var(--toast-block-i
 .api-test-status.is-success { color: var(--success); }
 .api-test-status.is-warning { color: var(--warning); }
 .api-test-status.is-error { color: var(--danger); font-weight: 700; }
+.image-diagnostic-panel { border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-soft); }
+.image-diagnostic-panel summary { display: flex; cursor: pointer; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 10px 12px; list-style: none; }
+.image-diagnostic-panel summary::-webkit-details-marker { display: none; }
+.image-diagnostic-panel summary strong { color: var(--text); font-size: 11px; }
+.image-diagnostic-panel summary span { color: var(--muted); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 9px; }
+.image-diagnostic-panel dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 14px; margin: 0; border-top: 1px solid var(--line); padding: 12px; }
+.image-diagnostic-panel dl div { min-width: 0; }
+.image-diagnostic-panel dt { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.image-diagnostic-panel dd { margin: 2px 0 0; color: var(--text); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 9px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
+.image-diagnostic-panel .image-diagnostic-error { grid-column: 1 / -1; }
 .api-settings-grid label { margin: 0; }
 .api-settings-grid input { padding: 0 10px; }
 .api-key-control { position: relative; display: block; min-width: 0; }
