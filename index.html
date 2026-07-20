@@ -36,7 +36,7 @@
     <span class="brand-mark desktop-required-mark" aria-hidden="true"><i></i><i></i><i></i></span>
     <p>VisPath · 视觉路径</p>
     <h1 id="desktopRequiredTitle">当前版本仅支持电脑端使用</h1>
-    <span class="desktop-required-copy">请使用宽度大于 900px 的浏览器访问。</span>
+    <span class="desktop-required-copy">请使用宽度至少 900px 的浏览器访问。</span>
     <span class="desktop-required-owner">VisPath · LINPO LAB · © 2026</span>
   </section>
 
@@ -51,12 +51,18 @@
         </div>
 
         <div class="form-stack">
+          <div class="setup-scroll-region">
           <section class="form-section" aria-labelledby="inputSectionTitle">
             <h3 class="sr-only" id="inputSectionTitle">输入内容</h3>
           <div class="field-group form-field">
             <label class="field-label-inline" for="sourcePrompt"><span>原始提示词</span><small class="input-lock-status hidden" id="sourcePromptStatus">已锁定</small></label>
             <textarea id="sourcePrompt" rows="4" placeholder="例如：为一家咖啡店做一张夏日开业海报，主体是一杯冰拿铁，画面需要留出标题区。"></textarea>
           </div>
+
+          <fieldset class="content-mode-fieldset form-field" id="contentModeFieldset">
+            <legend>内容模式</legend>
+            <div class="content-mode-options" id="contentModeOptions"></div>
+          </fieldset>
 
           <div class="field-group form-field">
             <label class="field-label-inline" for="referenceImage"><span>参考图</span><small class="label-helper">可选 · 点击、拖入或 ⌘V / Ctrl+V 粘贴图片</small></label>
@@ -73,11 +79,11 @@
             <fieldset class="reference-usage hidden" id="referenceUsageField">
               <legend>参考图用途</legend>
               <div class="reference-usage-options">
-                <label class="reference-usage-option" for="referenceUsageAnalyze">
+                <label class="choice-option reference-usage-option" for="referenceUsageAnalyze">
                   <input id="referenceUsageAnalyze" type="radio" name="referenceUsage" value="analyze" checked>
                   <span><strong>仅分析提示词</strong><small>不发送给生图接口</small></span>
                 </label>
-                <label class="reference-usage-option" for="referenceUsageExplore">
+                <label class="choice-option reference-usage-option" for="referenceUsageExplore">
                   <input id="referenceUsageExplore" type="radio" name="referenceUsage" value="explore">
                   <span><strong>参与生图探索</strong><small>作为图片1参与生成</small></span>
                 </label>
@@ -136,6 +142,7 @@
             <div class="dimension-list" id="dimensionList"></div>
           </fieldset>
           </section>
+          </div>
 
           <div class="setup-action" aria-live="polite">
             <button class="button button-quiet hidden" id="editSetupBtn" type="button">修改输入与设置</button>
@@ -451,6 +458,6 @@
 
   <input id="imageRecoveryFileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
   <div class="toast" id="toast" role="status"></div>
-  <script src="app.bundle.js?v=f3bcf7937e21"></script>
+  <script src="app.bundle.js?v=d455e9ce2fbe"></script>
 </body>
 </html>
