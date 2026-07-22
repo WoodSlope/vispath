@@ -175,7 +175,10 @@
               <span class="step-label">02 / PROMPTS</span>
               <h2 id="promptTitle">提示词方案 <span class="result-count" id="resultCount">0</span></h2>
             </div>
-            <button class="button button-quiet" id="selectAllBtn" type="button" disabled>全选</button>
+            <div class="results-heading-actions">
+              <button class="button button-quiet hidden" id="completeDirectionsBtn" type="button">补齐缺少方案</button>
+              <button class="button button-quiet" id="selectAllBtn" type="button" disabled>全选</button>
+            </div>
           </div>
           <p class="panel-helper" id="boardHint">生成后选择需要提交的提示词方案。</p>
           <div class="prompt-scroll-region">
@@ -394,6 +397,24 @@
     </div>
   </dialog>
 
+  <dialog class="confirm-dialog batch-submission-dialog" id="batchSubmissionDialog" aria-labelledby="batchSubmissionDialogTitle">
+    <div class="confirm-dialog-body">
+      <div class="confirm-dialog-head">
+        <div class="title-pair dialog-title">
+          <span class="step-label">SUBMISSION SNAPSHOT</span>
+          <h2 id="batchSubmissionDialogTitle">提交资料</h2>
+          <small class="dialog-meta" id="batchSubmissionDialogMeta"></small>
+        </div>
+        <button class="icon-button dialog-close" type="button" data-dialog-close aria-label="关闭提交资料" title="关闭提交资料"><svg class="ui-icon" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14L34 34M34 14L14 34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="confirm-dialog-content batch-submission-content" id="batchSubmissionContent"></div>
+      <div class="confirm-dialog-actions">
+        <button class="button" id="cancelBatchSubmissionBtn" type="button">关闭</button>
+        <button class="button button-primary" id="reuseBatchSubmissionBtn" type="button">复用到工作台</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog class="confirm-dialog" id="retryGenerationDialog" aria-labelledby="retryGenerationDialogTitle" aria-describedby="retryGenerationDialogDescription">
     <div class="confirm-dialog-body">
       <div class="confirm-dialog-head">
@@ -458,6 +479,6 @@
 
   <input id="imageRecoveryFileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
   <div class="toast" id="toast" role="status"></div>
-  <script src="app.bundle.js?v=d455e9ce2fbe"></script>
+  <script src="app.bundle.js?v=29585191c29d"></script>
 </body>
 </html>
