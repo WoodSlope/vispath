@@ -632,6 +632,7 @@ const DIMENSION_CONSTRAINT_PATTERNS = Object.freeze({
 });
 
 const REFERENCE_DEPENDENT_PATTERN = /参考图|原图|如图|上传(?:的)?图片|这张图|该图|上图|下图|该素材|这份素材|上述(?:图片|素材)|图片(?:中|里|内)|(?<!构)图(?:中|里)(?:的|所示|可见)|保持(?:图片|图中)|沿用(?:图片|图中)|沿用现有(?:主体|构图|配色|造型|风格)|参照(?:该|这份|上述)素材|(?:(?<!尤)其(?!他|次)|它(?:的)?|其中(?:的)?).{0,8}(?:配色|色彩|构图|造型|风格|主体|特征|轮廓|材质|光线|细节|内容)/;
+const REFERENCE_EXPLORE_COMPOSITION_GUARD = "构图安全要求：主体必须完整落在画布安全区内，头顶、帽子、四肢、脚和其他重要配件不得被裁切或贴边；主体四周保留约 8% 安全留白；如果参考图主体过大，应缩小主体后完整呈现，不使用近距离特写或出框构图。";
 const ASPECT_RATIO_PATTERN = /\b(?:1\s*[:：]\s*1|16\s*[:：]\s*9|9\s*[:：]\s*16|4\s*[:：]\s*3|3\s*[:：]\s*4|3\s*[:：]\s*2|2\s*[:：]\s*3|21\s*[:：]\s*9)\b/g;
 const ASPECT_CONTEXT_BEFORE_PATTERN = /(?:画幅|宽高比|纵横比|aspect\s*ratio|输出尺寸|输出比例|海报|封面|图片|图像|画面)[\s，,。；;:：-]*(?:为|是)?\s*$/i;
 const ASPECT_CONTEXT_AFTER_PATTERN = /^[\s，,。；;:：-]*(?:画幅|宽高比|纵横比|aspect\s*ratio|横版|竖版|方形|海报|封面|图片|图像|画面)/i;
@@ -799,6 +800,7 @@ function renderVariantPrompt({ rawPrompt, input, lockedSnapshot, explorationOpti
   const segments = [];
   if (referenceUsage === "explore") {
     segments.push("以图片1为视觉基础，保留未被指定改变的主体身份、核心造型与主要内容。 ");
+    segments.push(REFERENCE_EXPLORE_COMPOSITION_GUARD);
   }
   segments.push(prompt);
   segments.push(`视觉方向：${explorationOption}。${changeSummary}。`);
