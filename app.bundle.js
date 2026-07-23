@@ -4009,7 +4009,6 @@ $("imageResolution").addEventListener("change", resetGeneratedDirectionsForSetup
 document.querySelectorAll('input[name="referenceUsage"]').forEach((control) => {
   control.addEventListener("change", (event) => {
     if (isSetupLocked()) return;
-    clearRefinementLineage();
     state.referenceUsage = event.target.value === "explore" ? "explore" : "analyze";
     syncReferenceUsageUI();
     resetGeneratedDirectionsForSetupChange();
